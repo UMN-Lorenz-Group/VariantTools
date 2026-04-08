@@ -1,0 +1,1147 @@
+#### Subset BARCSoySNP6K and SoySNP50K
+
+gencove projects status-merged-vcf bea890d8-30e6-4768-b4bd-755abc5ee457
+gencove projects get-merged-vcf bea890d8-30e6-4768-b4bd-755abc5ee457
+
+####
+
+ awk '{FS=",";print $2,$4}' Fixed_Gencove_ID_List_V2.csv > Gcve_Samples0.txt
+ tail -1303 Gcve_Samples0.txt > Gcve_Samples.txt
+
+### s3://lorenzgenotyping/merged_vcf_SNPS.vcf.gz
+
+s3cmd get s3://lorenzgenotyping/Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz
+s3cmd get s3://lorenzgenotyping/merged_vcf_SNPS.vcf.gz
+s3cmd get s3://lorenzgenotyping/merged_vcf_SNPS.vcf.gz.tbi
+
+
+
+### Gencove_2020_Complete_impute_merged_vcf_SNPS.vcf.gz
+###
+
+mv merged_vcf_SNPS.vcf.gz Gencove_2020_Complete_impute_merged_vcf_SNPS.vcf.gz 
+mv merged_vcf_SNPS.vcf.gz.tbi Gencove_2020_Complete_impute_merged_vcf_SNPS.vcf.gz.tbi
+
+bcftools query -l Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz 
+bcftools query -l Gencove_2020_Complete_impute_merged_vcf_SNPS.vcf.gz 
+bcftools merge Gencove_2020_Complete_impute_merged_vcf_SNPS.vcf.gz Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz -o Gencove_Complete_Combined_mergedVCF_SNPs.vcf.gz -Oz
+
+s3cmd put ./Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz s3://lorenzgenotyping/
+
+
+###
+module load bcftools 
+cd /scratch.global/vramasub/Gencove_2022/
+bcftools index Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz
+bcftools reheader -s samplenames.txt Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz -o Gencove_2022_Complete_impute_merged_vcf_SNPS_Renamed.vcf.gz
+bcftools norm -m +any  Gencove_2022_Complete_impute_merged_vcf_SNPS_Renamed.vcf.gz -o Gcve2022_Full_imputed_SNPS_Norm_multiallele.vcf.gz -Oz b
+
+######
+
+bcftools index Gencove_Complete_Combined_mergedVCF_SNPs.vcf.gz 
+bcftools norm -m +  Gencove_Complete_Combined_mergedVCF_SNPs.vcf.gz -o Gencove_Complete_Combined_mergedVCF_SNPs_Norm_multiallele.vcf.gz -Oz b
+bcftools norm -m +any  Gencove_Complete_Combined_mergedVCF_SNPs.vcf.gz -o Gencove_Complete_Combined_mergedVCF_SNPs_Norm_multiallele.vcf.gz -Oz b
+
+
+#### 
+cd /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset
+
+cp NUST_Geno_BARC6K_a4_v1.bed /scratch.global/vramasub/Gencove_2022/
+
+awk '{print $6,$7,$9,$6"-"$7}' NUST_Geno_BARC6K_a4_v1.bed > NUST_BARCSoySNP6K_a4_v1_mod.bed
+awk '{print $4}' NUST_BARCSoySNP6K_a4_v1_mod.bed > BARCSoySNP6KMarkers
+
+#####
+
+sed -i 's/-/:/g' BARCSoySNP6KMarkers
+sed -i 's/Gm/glyma.Wm82.gnm4.Gm/g' BARCSoySNP6KMarkers
+sed -i 's/:/\t/g' BARCSoySNP6KMarkers 
+sort -k 1,1 -k 2,2n BARCSoySNP6KMarkers > BARCSoySNP6KMarkers_Sorted
+
+
+#####
+bcftools view -T BARCSoySNP6KMarkers_Sorted Gcve2022_Full_imputed_SNPS_Norm_multiallele.vcf.gz > Gcve2022_Full_imputed_SNPS_Norm_multiallele_6K.vcf.gz
+bcftools stats Gcve2022_Full_imputed_SNPS_Norm_multiallele_6K.vcf.gz > stats_Norm_multiallele_6K.txt 
+
+
+
+#### 03/02/2024
+
+cd /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset
+cp NUST_Geno_BARC6K_a4_v1.bed /scratch.global/vramasub/Gencove_2022/
+awk '{print $6,$7,$9,$6"-"$7}' NUST_Geno_BARC6K_a4_v1.bed > NUST_BARCSoySNP6K_a4_v1_mod.bed
+awk '{print $4}' NUST_BARCSoySNP6K_a4_v1_mod.bed > BARCSoySNP6KMarkers
+
+#####
+
+sed -i 's/-/:/g' BARCSoySNP6KMarkers
+sed -i 's/Gm/glyma.Wm82.gnm4.Gm/g' BARCSoySNP6KMarkers
+sed -i 's/:/\t/g' BARCSoySNP6KMarkers 
+sort -k 1,1 -k 2,2n BARCSoySNP6KMarkers > BARCSoySNP6KMarkers_Sorted
+
+bcftools view -T BARCSoySNP6KMarkers_Sorted Gencove_Complete_Combined_mergedVCF_SNPs_50K_Renamed.vcf.gz > Gcve_Complete_SNPS_BARCSoySNP6K_Renamed.vcf.gz
+
+
+######
+#bcftools view -T BARCSoySNP6KMarkers_Sorted Gcve2022_Full_imputed_SNPS_Norm_multiallele.vcf.gz > Gcve2022_Full_imputed_SNPS_Norm_multiallele_6K.vcf.gz
+#bcftools stats Gcve2022_Full_imputed_SNPS_Norm_multiallele_6K.vcf.gz > stats_Norm_multiallele_6K.txt 
+## Takes too long (try again with new connection)
+#bcftools view -T BARCSoySNP6KMarkers_Sorted Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz > Gcve2022_Full_imputed_SNPS_BARCSoySNP6K.vcf.gz
+#bcftools stats Gcve2022_Full_imputed_SNPS_BARCSoySNP6K.vcf.gz > stats_6K.txt 
+######
+
+bcftools view -T BARCSoySNP6KMarkers_Sorted Gencove_2022_Complete_impute_merged_vcf_SNPS_50K.vcf.gz > Gcve2022_Full_imputed_SNPS_BARCSoySNP6K.vcf.gz
+bcftools stats Gcve2022_Full_imputed_SNPS_BARCSoySNP6K.vcf.gz > stats_6K.txt 
+mv Gcve2022_Full_imputed_SNPS_BARCSoySNP6K.vcf.gz Gencove_2022_Complete_impute_merged_vcf_BARCSoySNP6K.vcf.gz
+
+
+bcftools view -T BARCSoySNP6KMarkers_Sorted Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf.gz > Gencove_2020_Complete_impute_merged_vcf_BARCSoySNP6K.vcf
+
+bcftools norm -m +any Gencove_2020_Complete_impute_merged_vcf_BARCSoySNP6K.vcf -o  Gencove_2020_Complete_impute_multAllele_BARCSoySNP6K.vcf
+Lines   total/split/realigned/skipped:  5973/0/0/0
+
+Gencove_2020_Complete_impute_multAllele_BARCSoySNP6K.vcf
+
+bcftools stats Gencove_2020_Complete_impute_multAllele_BARCSoySNP6K.vcf > Gcve_2020_stats_6K.txt 
+bcftools stats Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K.vcf > Gcve_2022_stats_6K.txt
+bcftools stats ~/NUST_Geno_Data_a4_v1_Gcve_Subset.vcf > NUST_2020_Stats_6K.txt
+bcftools stats ~/NUST_Geno_Data_a4_v1_Gcve_Subset_checked.vcf > NUST_2020_Checked_Stats_6K.txt
+
+
+bcftools stats ~/NUST_Geno_Data_a4_v1_Gcve_Subset_checked.vcf > NUST_2020_Stats_6K.txt
+###
+
+mv Gencove_2022_Complete_impute_merged_vcf_BARCSoySNP6K.vcf.gz Gencove_2022_Complete_impute_merged_vcf_BARCSoySNP6K.vcf
+bgzip Gencove_2022_Complete_impute_merged_vcf_BARCSoySNP6K.vcf
+
+
+bcftools norm -m +any Gencove_2022_Complete_impute_merged_vcf_BARCSoySNP6K.vcf.gz -o Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K.vcf.gz
+# Lines   total/split/realigned/skipped:  5973/0/0/0
+
+## Replace glyma.Wm82.gnm4. prefix for CHR
+sed -i 's/glyma.Wm82.gnm4.//g' Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K.vcf.gz
+
+###### Rename 
+
+awk 'NR>87 {OFS="\t";print $0}' Gcve_Samples.txt > Gcve_2022_SampleIDs.txt
+#bcftools query -l Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz > Gcve2022_Sample_IDs_in_file.txt
+bcftools query -l  Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K.vcf > Gcve2022_Sample_IDs_in_file.txt
+paste Gcve_2022_SampleIDs.txt Gcve2022_Sample_IDs_in_file.txt > Gcve_2022_Sample_IDs_Combined_V0.txt
+awk '{OFS="\t";print $3,$2}' Gcve_2022_Sample_IDs_Combined_V0.txt > Gcve_2022_Sample_IDs_Combined.txt 
+
+bcftools reheader -s Gcve_2022_Sample_IDs_Combined.txt Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K.vcf.gz -o Gcve2022_multAllele_SoySNP6K_Renamed.vcf.gz
+
+###### Rename 
+
+head -87 Gcve_Samples.txt > Gcve_2020_SampleIDs.txt
+bcftools query -l Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf > Gcve2020_Sample_IDs_in_file.txt
+paste Gcve_2020_Sample_IDs.txt Gcve2020_Sample_IDs_in_file.txt > Gcve_2020_Sample_IDs_Combined_V0.txt
+awk '{OFS="\t";print $3,$2}' Gcve_2020_Sample_IDs_Combined_V0.txt > Gcve_2020_Sample_IDs_Combined.txt 
+
+###
+grep -n "NUST" Fixed_Gencove_ID_List_V3.txt | wc -l
+56
+
+
+#### Gcve SoySNP50K Data (02/22/24)
+
+
+ 
+#### 
+ 
+cd /scratch.global/vramasub/Gencove_2022/
+#awk '{print $1,$2,$4}' SoySNP50K_a4_v1.bed > SoySNP50KMarkers
+
+### 
+awk '{OFS="\t"; print $1,$2}' SoySNP50K_a4_v1.bed > SoySNP50KMarkers
+
+sed -i 's/Gm/glyma.Wm82.gnm4.Gm/g'  SoySNP50KMarkers
+sort -k 1,1 -k 2,2n  SoySNP50KMarkers >  SoySNP50KMarkers_Sorted
+
+bcftools view -T SoySNP50KMarkers_Sorted Gencove_Complete_Combined_mergedVCF_SNPs.vcf.gz > Gencove_Complete_Combined_mergedVCF_SNPs_Norm_multiallele_50K.vcf.gz
+bcftools view -T SoySNP50KMarkers_Sorted Gencove_2020_Complete_impute_merged_vcf_SNPS.vcf.gz > Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf.gz
+bcftools view -T SoySNP50KMarkers_Sorted Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz > Gencove_2022_Complete_impute_merged_vcf_SNPS_50K.vcf.gz
+
+###
+
+mv Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf.gz Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf
+mv Gencove_2022_Complete_impute_merged_vcf_SNPS_50K.vcf.gz Gencove_2022_Complete_impute_merged_vcf_SNPS_50K.vcf
+
+bgzip Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf
+bgzip Gencove_2022_Complete_impute_merged_vcf_SNPS_50K.vcf
+
+bcftools index Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf.gz
+bcftools index Gencove_2022_Complete_impute_merged_vcf_SNPS_50K.vcf.gz
+
+###
+
+bcftools norm -m +any  Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf.gz -o Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf.gz
+#Lines   total/split/realigned/skipped:  44432/0/0/0
+
+bcftools stats Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf.gz > Gcve_2020_Stats_Complete_impute_merged_vcf_SNPs_50K.txt 
+
+bcftools stats Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf.gz > Gencove_2020_Stats_Complete_SNPs_50K_multAllele_Any.txt
+
+bgzip Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf.gz
+gunzip Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf.gz.gz 
+mv Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf.gz Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf
+
+
+bcftools query -l Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf | tail
+bcftools reheader -s samplenames.txt Gencove_2022_Complete_impute_merged_vcf_SNPS.vcf.gz -o Gencove_2022_Complete_impute_merged_vcf_SNPS_Renamed.vcf.gz
+
+
+bcftools reheader -s Gcve_2022_Sample_IDs_Combined.txt Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K.vcf -o  Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K_Renamed.vcf
+
+bcftools reheader -s  Gencove_2022_Complete_impute_multAllele_BARCSoySNP6K.vcf -o  
+
+bcftools view  -s ^ -o Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2.vcf Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf
+
+
+
+
+## Replace glyma.Wm82.gnm4. prefix for CHR
+sed -i 's/glyma.Wm82.gnm4.//g' Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf
+
+
+###### Rename 
+
+head -87 Gcve_Samples.txt > Gcve_2020_SampleIDs.txt
+bcftools query -l Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf > Gcve2020_Sample_IDs_in_file.txt
+paste Gcve_2020_Sample_IDs.txt Gcve2020_Sample_IDs_in_file.txt > Gcve_2020_Sample_IDs_Combined_V0.txt
+awk '{OFS="\t";print $3,$2}' Gcve_2020_Sample_IDs_Combined_V0.txt > Gcve_2020_Sample_IDs_Combined.txt 
+
+
+
+## Modify SampleIDs to match synonyms in DB
+# ND_Rolette  to ND12-15647 in column 1 of Gcve_2020_SampleIDs.txt 
+# Change "OAC-" to "OAC" 
+
+sed -i 's/OAC-/OAC/g' Gcve_2020_SampleIDs.txt
+
+bcftools view  -s ^M17-189015b -o Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2.vcf Gencove_2020_Complete_SNPs_50K_multAllele_Any.vcf
+bcftools query -l Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2.vcf | wc -l
+bcftools annotate -x FORMAT Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2.vcf > Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2_Mod.vcf
+
+### Rename Samples in VCF
+grep -n "M17-189015b" Gcve_2020_Sample_IDs_Combined.txt
+
+sed '62d' Gcve_2020_Sample_IDs_Combined.txt > Gcve_2020_Sample_IDs_Combined_V2.txt
+bcftools reheader -s Gcve_2020_Sample_IDs_Combined_V2.txt Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2_Mod.vcf -o Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2_Renamed.vcf
+
+
+
+
+
+###
+
+bcftools merge Gencove_2020_Complete_impute_merged_vcf_SNPs_50K.vcf.gz Gencove_2022_Complete_impute_merged_vcf_SNPS_50K.vcf.gz -o Gencove_Complete_Combined_mergedVCF_SNPs_50K.vcf.gz -Oz
+bcftools reheader -s Gcve_Samples_Mod.txt Gencove_Complete_Combined_mergedVCF_SNPs_50K.vcf.gz -o Gencove_Complete_Combined_mergedVCF_SNPs_50K_Renamed.vcf.gz
+
+### Soy AGP 1K Markers
+
+awk 'NR>11 {print $1,$2,$3}' Lorenz_PYT_2023_Geno_Data_a4_v1.vcf > SoyAGP1KMarkers
+awk '{if($1<=9){print "Gm0"$1,$2}else if($1>=9){print "Gm"$1,$2}}' SoyAGP1KMarkers > SoyAGP1KMarkers_Mod
+
+
+sed -i 's/Gm/glyma.Wm82.gnm4.Gm/g'  SoyAGP1KMarkers_Mod
+sort -k 1,1 -k 2,2n  SoyAGP1KMarkers_Mod > SoyAGP1KMarkers_Sorted
+
+awk '{OFS="\t";print $0}' SoyAGP1KMarkers_Sorted > SoyAGP1KMarkers_Sorted_Mod
+
+
+##### NUST strains in Gencove 2022 and 2020 VCF files 
+
+Gcve2022Samples <- read.table("Gcve_2022_Sample_IDs_Combined.txt",sep="\t")
+
+strains_2021 <- read.table("strainsTable1_2021.txt",sep="\t")
+strains_2022 <- read.table("strainsTable1_2022.txt",sep="\t")
+
+length(unique(strIDs2021))
+# [1] 490
+
+length(unique(strIDs2022))
+# [1] 482
+
+
+strIDs2021_unq <- (unique(strIDs2021))
+strIDs2022_unq <- (unique(strIDs2022))
+
+NUSTIDs_2021_in_Gcve <- Gcve2022IDs[which(Gcve2022IDs %in% strIDs2021_unq)]
+NUSTIDs_2022_in_Gcve <- Gcve2022IDs[which(Gcve2022IDs %in% strIDs2022_unq)]
+
+###
+### Modify VCF to include 'Gm' prefix to chr field..
+
+bcftools view -T SoyAGP1KMarkers_Sorted_Mod Gencove_Complete_Combined_mergedVCF_SNPs_50K.vcf.gz > Gencove_Complete_Combined_mergedVCF_SNPs_1K.vcf.gz
+
+
+#### Lorenz_PYT2023_Geno_Data
+
+sed -i 's/ \/ /\//g' Lorenz_PYT_2023_Geno_Data_a4_v1.vcf
+
+awk '{if(NR <11){print $0} else if(NR>11){if($1<=9){out="Gm0"$1; for(n=2;n<=NF;n++){out=out"\t"$n;}{print out}}else if($1>9){out="Gm"$1; for(n=2;n<=NF;n++){out=out"\t"$n;}{print out}}}}' Lorenz_PYT_2023_Geno_Data_a4_v1.vcf > Lorenz_PYT_2023_Geno_Data_a4_v1_mod.vcf
+cat Lorenz_PYT_2023_Geno_Data_a4_v1_mod.vcf | awk 'NR<15 {print $0}'
+
+#### Lorenz_PYT_2023_Geno_Data_a4_v1.vcf
+
+bgzip Lorenz_PYT_2023_Geno_Data_a4_v1_mod.vcf
+
+bcftools norm --check-ref ws -f Gmax.a4.v1.fasta Lorenz_PYT_2023_Geno_Data_a4_v1_mod.vcf.gz -o Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz -Oz
+[W::bcf_hdr_check_sanity] PL should be declared as Number=G
+Lines   total/split/realigned/skipped:  1220/0/0/0
+REF/ALT total/modified/added:   1220/34/61
+
+bcftools norm --check-ref ws -f Gmax.a4.v1.fasta Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz -o Lorenz_PYT_2023_Geno_Data_a4_v1_checked2.vcf.gz -Oz
+
+########################################################################
+#### Lorenz_PYT_2022_Geno_Data_a4_v1_mod.vcf
+
+sed -i 's/ \/ /\//g' Lorenz_PYT_2021_22_Geno_Data_a4_v1_V2.vcf
+
+awk '{if(NR <11){print $0} else if(NR>11){if($1<=9){out="Gm0"$1; for(n=2;n<=NF;n++){out=out"\t"$n;}{print out}}else if($1>9){out="Gm"$1; for(n=2;n<=NF;n++){out=out"\t"$n;}{print out}}}}' Lorenz_PYT_2021_22_Geno_Data_a4_v1_V2.vcf > Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf
+cat Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf | awk 'NR<15 {print $0}'
+
+#### Lorenz_PYT_2021_22_Geno_Data_a4_v1.vcf
+
+bgzip Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf
+
+bcftools index Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz
+bcftools norm --check-ref ws -f ../Gmax.a4.v1.fasta Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz -o Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked.vcf.gz -Oz
+
+[W::bcf_hdr_check_sanity] PL should be declared as Number=G
+[W::vcf_parse] Contig 'scaffold_214' is not defined in the header. (Quick workaround: index the file with f.)
+[W::vcf_parse] Contig 'scaffold_314' is not defined in the header. (Quick workaround: index the file with tabix.)
+[W::vcf_parse] Contig 'scaffold_79' is not defined in the header. (Quick workaround: index the file with tabix.)
+
+Lines   total/split/realigned/skipped:  1220/0/0/0
+REF/ALT total/modified/added:   1220/33/58
+
+####
+bcftools index Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked.vcf.gz
+bcftools norm --check-ref ws -f ../Gmax.a4.v1.fasta Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked.vcf.gz -o Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked2.vcf.gz -Oz
+[W::bcf_hdr_check_sanity] PL should be declared as Number=G
+Lines   total/split/realigned/skipped:  1220/0/0/0
+REF/ALT total/modified/added:   1220/0/0
+
+### 
+bcftools norm --check-ref ws -f ../Gmax.a4.v1.fasta Gencove_CB2019_mergedVCF_SNPs_50K_multiAlleleAny.vcf -o Gencove_CB2019_mergedVCF_SNPs_50K_multiAlleleAny_Checked.vcf -Oz
+
+##### Gencove_Complete_Combined_mergedVCF_SNPs_1K.vcf.gz Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz
+ mv Gencove_Complete_Combined_mergedVCF_SNPs_1K.vcf.gz Gencove_Complete_Combined_mergedVCF_SNPs_1K.vcf
+
+##### Subset CB 2017-2019 from Gencove Complete Merged VCF
+
+grep "CB2019" Fixed_Gencove_ID_List_V3.txt |awk '{print $2}' > CB2019_Samples.txt
+grep "CB2018" Fixed_Gencove_ID_List_V3.txt |awk '{print $2}' > CB2018_Samples.txt
+grep "CB2017" Fixed_Gencove_ID_List_V3.txt |awk '{print $2}' > CB2017_Samples.txt
+
+bcftools reheader -s Gcve_Samples_Mod.txt Gencove_Complete_Combined_mergedVCF_SNPs_1K.vcf -o Gencove_Complete_Combined_mergedVCF_SNPs_1K_Renamed.vcf
+
+bcftools query -l Gencove_Complete_Combined_mergedVCF_SNPs_1K_Renamed.vcf 
+
+
+### Subset CB2019 from the 2020/22 combined gencove AGP 1K data 
+
+bcftools view -S CB2019_Samples.txt Gencove_Complete_Combined_mergedVCF_SNPs_1K_Renamed.vcf > Gencove_CB2019_mergedVCF_SNPs_1K.vcf
+
+### Subset CB2018 from the 2020/22 combined gencove AGP 1K data 
+
+bcftools view -S CB2018_Samples.txt Gencove_Complete_Combined_mergedVCF_SNPs_1K_Renamed.vcf > Gencove_CB2018_mergedVCF_SNPs_1K.vcf
+
+### Subset CB2017 from the 2020/22 combined gencove AGP 1K data 
+
+bcftools view -S CB2017_Samples.txt Gencove_Complete_Combined_mergedVCF_SNPs_1K_Renamed.vcf > Gencove_CB2017_mergedVCF_SNPs_1K.vcf
+
+Warn: subset called for sample that does not exist in header: "M09-319035"... skipping
+Warn: subset called for sample that does not exist in header: "U13-609144"... skipping
+
+########### Create combined data sets of PYTs and parents in CB 
+### Merge PYT2023 and CB2019
+
+bgzip Gencove_CB2019_mergedVCF_SNPs_1K.vcf
+bcftools index Gencove_CB2019_mergedVCF_SNPs_1K.vcf.gz 
+bcftools index Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz
+
+bcftools merge Gencove_CB2019_mergedVCF_SNPs_1K.vcf.gz Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz -o CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf.gz -Oz
+
+
+bcftools merge Gencove_CB2019_mergedVCF_SNPs_1K.vcf.gz Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz -o CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf.gz -Oz
+
+
+
+bcftools merge  TP_Imputed_Filtered.vcf.gz VP_Imputed_Filtered.vcf.gz -o TP_VP_mergedVCF_SNPs.vcf.gz -Oz
+
+
+sed -i 's/glyma.Wm82.gnm4.Gm/Gm/g'
+
+bcftools norm -m +any CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf -o CB2019_Lorenz_PYT2023_mergedVCF_SNPs_multiAlleleAny.vcf
+CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf
+
+bcftools norm -d all CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf -o CB2019_Lorenz_PYT2023_mergedVCF_SNPs_deDup.vcf
+bcftools norm -m +any Gencove_CB2019_mergedVCF_SNPs_50K.vcf -o Gencove_CB2019_mergedVCF_SNPs_50K_multiAlleleAny.vcf
+
+
+########### Create combined data sets of 1K PYTs and 50K parents in CB 
+### Merge 1K PYT2023 and 50K CB2019
+### Subset CB2018 from the 2020/22 combined gencove 50K data 
+
+module load bcftools
+module load bzip2
+
+bcftools view -S CB2018_Samples.txt Gencove_Complete_Combined_mergedVCF_SNPs_50K_Renamed.vcf.gz > Gencove_CB2018_mergedVCF_SNPs_50K.vcf
+
+sed -i 's/glyma.Wm82.gnm4.//g' Gencove_CB2018_mergedVCF_SNPs_50K.vcf
+bgzip Gencove_CB2018_mergedVCF_SNPs_50K.vcf
+bcftools index Gencove_CB2018_mergedVCF_SNPs_50K.vcf.gz 
+
+bcftools query -l Gencove_CB2018_mergedVCF_SNPs_50K.vcf.gz | wc -l
+
+
+
+### Subset CB2017 from the 2020/22 combined gencove 50K data 
+
+module load bcftools
+module load bzip2
+
+bcftools view -S CB2017_Samples.txt Gencove_Complete_Combined_mergedVCF_SNPs_50K_Renamed.vcf.gz --force-samples > Gencove_CB2017_mergedVCF_SNPs_50K.vcf
+Warn: subset called for sample that does not exist in header: "M04-295008"... skipping
+Warn: subset called for sample that does not exist in header: "M09-319035"... skipping
+Warn: subset called for sample that does not exist in header: "U13-609144"... skipping
+
+sed -i 's/glyma.Wm82.gnm4.//g' Gencove_CB2017_mergedVCF_SNPs_50K.vcf
+bgzip Gencove_CB2017_mergedVCF_SNPs_50K.vcf
+bcftools index Gencove_CB2017_mergedVCF_SNPs_50K.vcf.gz 
+bcftools query -l Gencove_CB2017_mergedVCF_SNPs_50K.vcf.gz | wc -l
+
+bcftools query -l Gencove_Complete_Combined_mergedVCF_SNPs_50K_Renamed.vcf.gz | grep "KB13"
+
+
+
+### Subset CB2019 from the 2020/22 combined gencove 50K data 
+
+module load bcftools
+module load bzip2
+
+bcftools view -S CB2019_Samples.txt Gencove_Complete_Combined_mergedVCF_SNPs_50K_Renamed.vcf.gz > Gencove_CB2019_mergedVCF_SNPs_50K.vcf
+
+sed -i 's/glyma.Wm82.gnm4.//g' Gencove_CB2019_mergedVCF_SNPs_50K.vcf
+bgzip Gencove_CB2019_mergedVCF_SNPs_50K.vcf
+bcftools index Gencove_CB2019_mergedVCF_SNPs_50K.vcf.gz 
+
+bcftools query -l Gencove_CB2019_mergedVCF_SNPs_50K.vcf.gz | wc -l
+#49
+
+bcftools query -l Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz | wc -l
+
+#[W::bcf_hdr_check_sanity] PL should be declared as Number=G
+#1222
+
+
+## Merge
+
+bcftools merge Gencove_CB2019_mergedVCF_SNPs_50K.vcf.gz Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz -o CB2019_50K_Lorenz_PYT2023_1K_mergedVCF_SNPs.vcf.gz -Oz
+
+# [W::bcf_hdr_check_sanity] PL should be declared as Number=G
+# [W::bcf_hdr_merge] Trying to combine "AF" tag definitions of different lengths
+
+bcftools query -l CB2019_50K_Lorenz_PYT2023_1K_mergedVCF_SNPs.vcf.gz
+
+bcftools stats  CB2019_50K_Lorenz_PYT2023_1K_mergedVCF_SNPs.vcf.gz
+bcftools stats Gencove_CB2019_mergedVCF_SNPs_50K.vcf.gz
+
+bcftools stats Lorenz_PYT_2023_Geno_Data_a4_v1_checked.vcf.gz > Lorenz_PYT23_a4_v1_Stats
+
+###  Merge PYT2022 and CB2018
+   
+cd /scratch.global/vramasub/Gencove_2022/   
+
+#### Lorenz_PYT2021_22_Geno_Data
+
+sed -i 's/ \/ /\//g' Lorenz_PYT_2021_22_Geno_Data_a4_v1.vcf
+grep -v "scaffold" Lorenz_PYT_2021_22_Geno_Data_a4_v1.vcf > Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod0.vcf
+
+awk '{if(NR <11){print $0} else if(NR>11){if($1<=9){out="Gm0"$1; for(n=2;n<=NF;n++){out=out"\t"$n;}{print out}}else if($1>9){out="Gm"$1; for(n=2;n<=NF;n++){out=out"\t"$n;}{print out}}}}' Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod0.vcf > Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf
+cat Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf | awk 'NR<15 {print $0}'
+
+####
+
+bgzip Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf
+cp Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz ~
+
+cd ~
+## Validate Variant File 
+singularity exec ./gatk_latest.sif gatk IndexFeatureFile -I ./Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz --java-options '-DGATK_STACKTRACE_ON_USER_EXCEPTION=true'
+singularity exec ./gatk_latest.sif gatk ValidateVariants -R Gmax.a4.v1.fasta -V Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz --validation-type-to-exclude ALL
+
+#17:25:12.079 INFO  ProgressMeter - Traversal complete. Processed 1217 total variants in 0.0 minutes.
+#17:25:12.079 INFO  ValidateVariants - Shutting down engine
+
+#### 
+cd /scratch.global/vramasub/Gencove_2022/ 
+bcftools index Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz
+
+bcftools norm --check-ref ws -f Gmax.a4.v1.fasta Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz -o Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked.vcf.gz -Oz
+
+[W::bcf_hdr_check_sanity] PL should be declared as Number=G
+Lines   total/split/realigned/skipped:  1217/0/0/0
+REF/ALT total/modified/added:   1217/33/57
+
+###
+bcftools norm --check-ref ws -f Gmax.a4.v1.fasta Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked.vcf.gz -o Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked2.vcf.gz -Oz
+
+### 
+sed -i 's/glyma.Wm82.gnm4.Gm/Gm/g' Gencove_CB2018_mergedVCF_SNPs_1K.vcf
+bgzip Gencove_CB2018_mergedVCF_SNPs_1K.vcf
+
+bcftools index Gencove_CB2018_mergedVCF_SNPs_1K.vcf.gz 
+bcftools index Lorenz_PYT_2021_22_Geno_Data_a4_v1_mod.vcf.gz
+
+bcftools index Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked.vcf.gz
+
+awk '{FS=",";OFS="\t";print $2}' Lorenz_PYT_2022_Samples.csv > Lorenz_PYT_2022_Samples
+awk 'NR>1{print $0}' Lorenz_PYT_2022_Samples > Lorenz_PYT_2022_Samples_V2
+head Lorenz_PYT_2022_Samples_V2
+
+
+bcftools view -S Lorenz_PYT_2022_Samples_V2 Lorenz_PYT_2021_22_Geno_Data_a4_v1_checked.vcf.gz > Lorenz_PYT_2022_Geno_Data_a4_v1_checked.vcf
+[W::bcf_hdr_check_sanity] PL should be declared as Number=G
+Warn: subset called for sample that does not exist in header: "M18-218001"... skipping
+
+
+bcftools merge Gencove_CB2018_mergedVCF_SNPs_1K.vcf.gz Lorenz_PYT_2022_Geno_Data_a4_v1_checked.vcf.gz -o CB2018_Lorenz_PYT2022_mergedVCF_SNPs.vcf.gz -Oz
+bcftools norm -m +any CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf -o CB2019_Lorenz_PYT2023_mergedVCF_SNPs_multiAlleleAny.vcf
+
+CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf
+
+bcftools norm -d all CB2019_Lorenz_PYT2023_mergedVCF_SNPs.vcf -o CB2019_Lorenz_PYT2023_mergedVCF_SNPs_deDup.vcf
+
+
+### Merge PYT2021 and CB2017 
+##############################################################################################
+#### 
+library(vcfR)
+library(dplyr)
+
+VCFtoDF_V2 <- function(infile){
+  
+  
+  vcf <- read.vcfR(infile, verbose = FALSE)
+  gt <- extract.gt(vcf, element = "GT", as.numeric = F,IDtoRowNames = FALSE)
+  fix_T <- as_tibble(getFIX(vcf))
+  
+  gt2 <- matrix(0, ncol = ncol(gt), nrow = nrow(gt))
+  colnames(gt2) <- colnames(gt)
+  
+  # gt2a <- apply(gt,2, function(x) gsub("1[/|]1","BB",x))
+  # gt2b <- gsub("0[/|]0","AA",gt2a)
+  # gt2c <- gsub("[10][/|][10]","AB",gt2b)
+  # gt2d <- gsub("\\.[/|]\\.","NA",gt2c)
+  
+   gt2[(gt == "1/1")|(gt == "1|1")] <- 'BB'
+   gt2[(gt == "0/0")|(gt == "0|0")] <- 'AA'
+   gt2[(gt == "0/1")|(gt == "1/0")|(gt == "0|1")|(gt == "1|0")] <- 'AB'
+   gt2[(gt == "\\./\\.")|(gt == "\\.|\\.")] <- NA
+  
+   gt2 <- as_tibble(gt2) %>% mutate(SNPID = fix_T$ID)
+  
+  gt.simple <- fix_T %>% dplyr::select("ID", "CHROM", POS, REF, ALT) %>%
+    dplyr::rename(SNPID=ID, Chrom=CHROM, Position=POS) %>%
+    dplyr::left_join(gt2, by = 'SNPID')
+  
+  return(gt.simple)
+}
+
+
+Gcve2022_Full_imputed_SNPS_Norm <- VCFtoDF_V2("Gcve_BARCSoySNP6K_Complete_Gt_V2.vcf")
+
+####
+
+cd /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset
+awk '{print $4}' NUST_BARCSoySNP6K_a4_v1_mod.bed > BARCSoySNP6KMarkers
+
+###
+sed -i 's/-/:/g' BARCSoySNP6KMarkers
+sed -i 's/Gm/glyma.Wm82.gnm4.Gm/g' BARCSoySNP6KMarkers
+sed -i 's/:/\t/g' BARCSoySNP6KMarkers 
+sort -k 1,1 -k 2,2n BARCSoySNP6KMarkers > BARCSoySNP6KMarkers_Sorted
+
+####
+#### Gencove2020
+#### Option 1: subset from multi-allele norm complete 2020 merged vcf 
+
+bcftools view -T BARCSoySNP6KMarkers_Sorted ../merged_vcf_SNPS_Norm_multiallele.vcf.gz > merged_vcf_SNPS_Norm_multiallele_6K.vcf.gz
+bcftools stats merged_vcf_SNPS_Norm_multiallele_6K.vcf.gz > stats_Norm_multiallele_6K_V1.txt
+grep "number of records" stats_Norm_multiallele_6K_V1.txt
+
+#   number of records   .. number of data rows in the VCF
+# SN      0       number of records:      5884
+
+
+### Option 2: subset from complete set 
+
+bcftools view -T BARCSoySNP6KMarkers_Sorted ../merged_vcf_SNPS.vcf.gz > merged_vcf_SNPS_6K.vcf.gz
+
+mv merged_vcf_SNPS_6K.vcf.gz merged_vcf_SNPS_6K.vcf
+mv merged_vcf_SNPS_6K.vcf Gencove2020_merged_vcf_SNPS_6K.vcf
+
+bcftools norm -m +  Gencove2020_merged_vcf_SNPS_6K.vcf -o Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K.vcf
+
+
+
+bcftools norm -m +any  Gencove2020_merged_vcf_SNPS_6K.vcf -o Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K.vcf
+bcftools stats Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K.vcf > Gcve2020_stats_Norm_multialleleAny_6K_V1.txt 
+
+
+
+# bcftools norm -c w -w 1 -o output.vcf input.vcf
+# bcftools norm -cw -w1 -o Gencove2020_merged_vcf_SNPS_Norm_CW1_6K.vcf Gencove2020_merged_vcf_SNPS_6K.vcf
+# Keep all alternate alleles within a single record and do not left-align.
+# bcftools norm -c w -w 0 -o output.vcf input.vcf# 
+
+bcftools stats Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K.vcf > Gcve2020_stats_Norm_multiallele_6K_V1.txt 
+grep "number of records"  Gcve2020_stats_Norm_multiallele_6K_V1.txt 
+
+## Replace glyma.Wm82.gnm4. prefix for CHR
+
+sed -i 's/glyma.Wm82.gnm4.//g' Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K.vcf   
+sed -i 's/glyma.Wm82.gnm4.//g' Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K.vcf
+
+## Check integrity of VCF
+singularity exec -H /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset ./gatk_latest.sif gatk ValidateVariants -R /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gmax.a4.v1.fasta -V /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K.vcf  --validation-type-to-exclude ALL
+## Processed 5884 total variants in 0.0 minutes 
+
+####
+
+
+
+
+### Remove Duplicate Sample 
+bcftools view  -s ^M17-189015b -o Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_V2.vcf Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K.vcf
+bcftools query -l Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_V2.vcf | wc -l
+86
+
+bcftools view  -s ^M17-189015b -o Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_V2.vcf Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K.vcf
+bcftools query -l Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_V2.vcf | wc -l
+
+
+
+## keep only the GT fields 
+bcftools annotate -x FORMAT Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_V2.vcf > Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_V2_Mod.vcf
+bcftools annotate -x FORMAT Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_V2.vcf > Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_V2_Mod.vcf
+
+
+
+## Rename Sample Names 
+bcftools reheader -s Gcve_2020_SampleIDs.txt Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_V2_Mod.vcf -o  Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_Renamed.vcf
+bcftools reheader -s Gcve_2020_SampleIDs.txt Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_V2_Mod.vcf -o  Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_Renamed.vcf
+
+
+###
+grep "#CHROM" Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_Renamed.vcf > VCF_Head_Col
+awk '{for(i=1;i<=NF;i++) {print $i}}' VCF_Head_Col
+
+
+###
+grep "#CHROM" Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_Final.vcf > VCF_Head_Col2
+awk '{for(i=1;i<=NF;i++) {print $i}}' VCF_Head_Col2
+
+
+
+###
+## For read.table method
+# sed -i 's/#CHROM/CHROM/g' Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_Renamed.vcf
+# Gcve2022_Full_imputed_SNPS_Norm <- read.table("Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_Renamed.vcf",header=TRUE)
+
+readVCF_HeadData <- function(infileVCF){
+
+# Set the file path to the VCF file
+
+    vcf_file <- infileVCF
+
+# Open a connection to the VCF file and skip the meta info lines
+
+	vcf_conn <- file(vcf_file, open = "r")
+	header <- c()
+	while (TRUE) {
+	  line <- readLines(vcf_conn, n = 1)
+	  if (startsWith(line, "##")) {
+		header<- c(header,line)
+		next
+	  } else {
+		# Once we reach the information row, break out of the loop
+	
+
+vcf_data_GT <-  apply(vcf_data,1,function(x) { 
+
+  GVec  <- x[10:length(x)]
+  Ref <- x["REF"]
+  Alt <- x["ALT"]
+  
+  GVecMod0 <- gsub(0,paste(0,"/",0,sep=""),GVec) 
+  GVecMod1 <- gsub(1,paste(0,"/",1,sep=""),GVecMod0) 
+  GVecMod2 <- gsub(2,paste(1,"/",1,sep=""),GVecMod1)
+  GVecMod3 <- gsub(,paste(".","./.",,sep=""),GVecMod2)
+  
+  XMod <- c(x[1:9],GVecMod2) 
+  
+  return(XMod)
+  
+ }
+ )	info_row <- line
+		break
+	  }
+	}
+
+# Read in the data in the VCF file, starting from the information row
+	vcf_data <- read.table(vcf_conn, header = FALSE)
+	close(vcf_conn)
+
+# Print the information row and the first few rows of the VCF data
+	colnames(vcf_data) <- unlist(strsplit(info_row,"\t"))
+	head(vcf_data)
+
+  return(list(header,info_row,vcf_data))
+}
+###
+
+writeVCF_HeadData <- function(GenoInData,outfile){
+	header <-GenoInData[[1]]
+	# Write header to file
+	writeLines(header, outfile)
+
+    infoRow <- GenoInData[[2]]
+	# Write column names to file
+	line1 <- paste("#", paste(infoRow, collapse = '\t'), sep = "")
+	
+	cat(line1, file = outfile, append = TRUE, "\n")
+
+	GenoData <- GenoInData[[3]]
+	# Write data to file
+	write.table(GenoData,outfile, sep = "\t", col.names = FALSE, row.names = FALSE,quote=FALSE, append = TRUE)
+
+}
+ 
+
+
+
+
+infileVCF <- "Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_Renamed.vcf" 
+
+
+infileVCF <- "BreedBaseGenotypesDownload_AGP2023.vcf"
+Gcve_Geno_In  <- readVCF_HeadData(infileVCF)
+length(Gcve_Geno_In)
+
+
+Gcve2022_Full_imputed_SNPS_Norm <- Gcve_Geno_In[[3]]
+colnames(Gcve2022_Full_imputed_SNPS_Norm) <- unlist(strsplit(Gcve_Geno_In[[2]],"\t"))
+
+colnames(Gcve2022_Full_imputed_SNPS_Norm) <- gsub("#CHROM","CHROM",colnames(Gcve2022_Full_imputed_SNPS_Norm))
+
+Gcve2022_Full_imputed_SNPS_Norm$CHRPOS <- paste(Gcve2022_Full_imputed_SNPS_Norm$CHROM,Gcve2022_Full_imputed_SNPS_Norm$POS,sep="-")
+
+### Extract ssIDs from BARCSoySNP6K Data
+
+ BARCSoySNP6K_BED <- read.table("NUST_Geno_BARC6K_a4_v1.bed")
+ BARCSoySNP6K_BEDTable <- BARCSoySNP6K_BED[,c(6,7,9)]
+ colnames(BARCSoySNP6K_BEDTable) <- c("CHROM","POS","ssID")
+ BARCSoySNP6K_BEDTable$CHRPOS<- paste(BARCSoySNP6K_BEDTable$CHROM,BARCSoySNP6K_BEDTable$POS,sep="-")
+ 
+ BARCSoySNP6K_BEDTable_Filt <- BARCSoySNP6K_BEDTable[-which(duplicated(BARCSoySNP6K_BEDTable$ssID)),]
+ 
+ dim(BARCSoySNP6K_BEDTable_Filt)
+ #[1] 5899    4
+
+ 
+### 
+Gcve2022_Full_imputed_SNPS_Norm_Info <-  merge(BARCSoySNP6K_BEDTable_Filt,Gcve2022_Full_imputed_SNPS_Norm,by="CHRPOS",all.y=TRUE)
+
+Gcve2022_Full_imputed_SNPS_Norm_Info$ID <- Gcve2022_Full_imputed_SNPS_Norm_Info$ssID
+rmColInd <- c(grep("ssID",colnames(Gcve2022_Full_imputed_SNPS_Norm_Info)),grep("CHRPOS",colnames(Gcve2022_Full_imputed_SNPS_Norm_Info)),grep(".x",colnames(Gcve2022_Full_imputed_SNPS_Norm_Info)))
+ 
+Gcve2022_Full_imputed_SNPS_Norm_Info_V2 <- Gcve2022_Full_imputed_SNPS_Norm_Info[,-rmColInd]
+colnames(Gcve2022_Full_imputed_SNPS_Norm_Info_V2) <- gsub("\\.y","",colnames(Gcve2022_Full_imputed_SNPS_Norm_Info_V2))
+
+Gcve_Geno_Final_Data <- Gcve2022_Full_imputed_SNPS_Norm_Info_V2
+Gcve_Geno_Final_Data_Sort <- Gcve_Geno_Final_Data[order(Gcve_Geno_Final_Data$CHROM,Gcve_Geno_Final_Data$POS,Gcve_Geno_Final_Data$ALT),]
+
+dim(Gcve_Geno_Final_Data_Sort)
+
+## Checks 
+
+starInd <- (which((Gcve_Geno_Final_Data_Sort$ALT == "*")))
+length(starInd)
+
+if(length(starInd) >0) {print(which(duplicated(Gcve_Geno_Final_Data_Sort$ID[-starInd])))}
+
+dupInd <- (which(duplicated(Gcve_Geno_Final_Data_Sort$ID)))
+length(dupInd)
+table(Gcve_Geno_Final_Data_Sort$ALT) 
+
+###
+### length(starInd)
+# Gcve_Geno_Final_Data_Sort_Filt <- Gcve_Geno_Final_Data_Sort[-starInd,] 
+
+
+### Checks  
+ 
+### 
+
+starInd <- (which((Gcve_Geno_Final_Data$ALT == "*")))
+table(Gcve_Geno_Final_Data$ALT[starInd])
+
+dupID <- Gcve_Geno_Final_Data$ID[(which(duplicated(Gcve_Geno_Final_Data$ID)))]
+#Gcve_Geno_Final_Data[which(Gcve_Geno_Final_Data$ID %in% dupID),c(1:5)]
+
+
+#### Write output 1
+ 
+Gcve_Geno_Out <-  Gcve_Geno_In
+Gcve_Geno_Out[[2]] <- colnames(Gcve_Geno_Final_Data_Sort)
+Gcve_Geno_Out[[3]] <- Gcve_Geno_Final_Data_Sort
+
+outfile <- "Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_Final.vcf"
+writeVCF_HeadData(Gcve_Geno_Out,outfile)
+
+
+
+singularity exec -H /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset ./gatk_latest.sif gatk ValidateVariants -R /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gmax.a4.v1.fasta -V /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_Final.vcf  --validation-type-to-exclude ALL
+
+
+
+#### Write output 2 without spanning deletions (no dup SNP IDs)
+ 
+Gcve_Geno_Out2 <-  Gcve_Geno_In
+Gcve_Geno_Out2[[2]] <- colnames(Gcve_Geno_Final_Data_Sort_Filt)
+Gcve_Geno_Out2[[3]] <- Gcve_Geno_Final_Data_Sort_Filt
+
+Out2file <- "Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_Final_Filt.vcf"
+writeVCF_HeadData(Gcve_Geno_Out2,Out2file)
+
+
+ 
+singularity exec -H /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset ./gatk_latest.sif gatk ValidateVariants -R /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gmax.a4.v1.fasta -V /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gencove2020_merged_vcf_SNPS_Norm_multiallele_6K_Final.vcf  --validation-type-to-exclude ALL
+
+
+ 
+singularity exec -H /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset ./gatk_latest.sif gatk ValidateVariants -R /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gmax.a4.v1.fasta -V /scratch.global/vramasub/Gencove_2022/Gcve_BARCSoySNP6K_Subset/Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K_Final.vcf  --validation-type-to-exclude ALL
+
+
+Gencove_Soy_Low-pass_2020 data subset to BARCSoySNP6K Marker Set. Gencove low-pass sequencing generates 27.7 million variants at 0.1-6X coverage with an average of ~0.5X coverage. 
+A subset of SNPs corresponding to the BARCSoySNP6K marker set was extracted from the raw data to create this assay format. Gencove raw data uses Wm82.a4.v1 version of the genome as reference, 
+whereas the BARCSoySNP6K assay reports SNP calls against the Wm82.a1.v1 version. Consequently, the BARCSoySNP6K marker set was lifted over 
+to the Wm82.a4.v1 reference using the UCSC liftover tool. Out of the 6000 SNPs in the BARCSoySNP6K assay,5397 SNP markers were retrieved from the Gencove raw data set. 
+Multiple alleles and spanning deletions were retained in the final version of this format. 
+Gencove_2020 data contains lines from NUST_2020, PR_2020 and some old NUST population. 
+
+
+Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K.vcf
+
+infileVCF2 <- "Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_6K.vcf" 
+
+Gcve_Geno_In2  <- readVCF_HeadData(infileVCF2)
+length(Gcve_Geno_In2)
+
+Gcve_Geno_Data2 <- Gcve_Geno_In2[[3]]
+colnames(Gcve_Geno_Data2) <- unlist(strsplit(Gcve_Geno_In2[[2]],"\t"))
+
+starInd <- (which((Gcve_Geno_Data2$ALT == "*")))
+which(duplicated(Gcve_Geno_Final_Data_Sort$ID[-starInd]))
+
+dupInd <- (which(duplicated(Gcve_Geno_Final_Data_Sort$ID)))
+table(Gcve_Geno_Final_Data_Sort$ALT[dupInd]) 
+
+outfile <- "Gcve_BARCSoySNP6K_Complete_Gt_V2.vcf"
+
+####
+
+DFToVCF_V2 <- function(ingeno, outfile){
+  input.geno <- ingeno
+  # order input.geno
+  input.geno <- input.geno[order(input.geno$Chrom, input.geno$Position), ]
+  
+  # function to change AA, AB, BB to 1/1, 1/0, 0/0, change NA to ./. for each row
+  recode.marker.to.vcf <- function(geno.temp){
+    geno2 <- geno.temp[-c(1:5)]
+    geno2[geno2 == "AA"] = '1/1'
+    geno2[geno2 == "BB"] = '0/0'
+    geno2[geno2 == "AB"] = '1/0'
+    geno2[is.na(geno2)] = './.' # missing values are coded as 'NN'
+    return(geno2)
+  }
+  
+  convert.geno <- t(apply(input.geno, 1, recode.marker.to.vcf))
+  vcf.format <- cbind(input.geno[,c(1:5)], convert.geno) %>%
+    as_tibble() %>%
+    dplyr::rename(ID = SNPID, CHROM = Chrom, POS = Position) %>%
+    dplyr::mutate(QUAL = '.', FILTER = 'PASS', INFO = '.', FORMAT = 'GT') %>%
+    dplyr::select(CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO, FORMAT, everything())
+  
+  
+  header <- c("##fileformat=VCFv4.0",
+              "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+              "##FORMAT=<ID=AD,Number=.,Type=Integer,Description=\"Allelic depths for the reference and alternate alleles in the order listed\">",
+              "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Read Depth (only filtered reads used for calling)\">",
+              "##FORMAT=<ID=GQ,Number=1,Type=Float,Description=\"Genotype Quality\">",
+              "##FORMAT=<ID=PL,Number=.,Type=Float,Description=\"Normalized, Phred-scaled likelihoods for AA,AB,BB genotypes where A=ref and B=alt; not applicable if site is not biallelic\">",
+              "##INFO=<ID=NS,Number=1,Type=Integer,Description=\"Number of Samples With Data\">",
+              "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Total Depth\">",
+              "##INFO=<ID=AF,Number=.,Type=Float,Description=\"Allele Frequency\">")
+  readr::write_lines(header, outfile,append=F)
+  line1 <- stringr::str_c(colnames(vcf.format), collapse = '\t') %>%
+    stringr::str_c('#', ., "")
+  readr::write_lines(line1, outfile,append=T)
+  readr::write_tsv(vcf.format, outfile,append=T)
+  
+  return(vcf.format)
+}
+
+DFToVCF_V2(Gcve_BARCSoySNP6K_Table_Out_Mod,outfile)
+
+
+
+
+
+####
+
+ Genotyping Project
+ Project Name: Gencove_Soy_Low-pass_2020
+ Description: NUST 2020 and PR 2020 lines along with some old NUST lines assayed using gencove soy low-pass sequencing 
+
+
+ Genotyping Plate: Gencove_BARCSoySNP6K_Subset_2020_001
+ Description: Gencove_Soy_Low-pass_2020 data subset to BARCSoySNP6K Marker Set. Gencove low-pass sequencing
+ generates 27.7 million variants at 0.1-6X coverage with an average of ~0.5X coverage. A subset of SNPs corresponding to the BARCSoySNP6K marker set was extracted 
+ from the raw data to create this assay format. Gencove raw data uses Wm82.a4.v1 version of the genome as reference, whereas the 
+ BARCSoySNP6K assay reports SNP calls against the Wm82.a1.v1 version. Consequently, the BARCSoySNP6K marker set was lifted over 
+ to the Wm82.a4.v1 reference using the UCSC liftover tool. Out of the 6000 SNPs in the BARCSoySNP6K assay,5397 SNP markers were retrieved from the Gencove raw data set. 
+ Multiple alleles and spanning deletions were retained in the final version of this format. Gencove_2020 data contains lines from NUST_2020, PR_2020 and some old NUST population. 
+
+
+ 
+
+####
+#### Gencove2020
+Project Name: Gencove_Soy_Low-pass_SoySNP50K_2020
+Genotyping Plate: Gencove_SoySNP50K_Subset_2020_001
+Plate Description: Gencove_Soy_Low-pass_2020 data subset to SoySNP50K Marker Set. Gencove_2020 data contains lines from NUST_2020, PR_2020 and some old NUST population. 
+
+
+Reference genome: Glyma.Wm82.a4.v1 
+Species: Glycine max
+Protocol Description: 
+Gencove low-pass sequencing generates 27.7 million variants at 0.1-6X coverage with an average of ~0.5X coverage. A subset of SNPs corresponding to the SoySNP50K marker set was extracted 
+from the raw data to create this assay format. Gencove raw data uses Wm82.a4.v1 version of the genome as reference, whereas the SoySNP50K assay reports SNP calls against the Wm82.a1.v1 version. So, SoySNP50K marker set was lifted over 
+to the Wm82.a4.v1 reference using the UCSC liftover tool. Out of the SNPs in the SoySNP50K assay that were lifted over to
+the Wm82.a4.v1 version of the genome and out of this set, 29542  SNP markers were retrieved from the Gencove raw data set. 
+Multiple alleles and spanning deletions were retained in the final version of this format. 
+Gencove_2020 data contains lines from NUST_2020, PR_2020 and some old NUST population. 
+
+###
+A set of 40253 SNP markers were retrieved from the Gencove raw data set. 
+Multiple alleles and spanning deletions were retained in the final version of this format.
+
+### Filt
+A set of 29542 SNP markers were retrieved from the Gencove raw data set. 
+Multiple alleles and spanning deletions were retained in the final version of this format.
+
+
+
+
+
+infileVCF <- "Gencove_2020_Complete_SNPs_50K_multAllele_Any_V2_Renamed.vcf"
+Gcve_Geno_In  <- readVCF_HeadData(infileVCF)
+length(Gcve_Geno_In)
+
+
+
+Gcve2020_50K_SNPS_Norm_multAny <- Gcve_Geno_In[[3]]
+colnames(Gcve2020_50K_SNPS_Norm_multAny) <- unlist(strsplit(Gcve_Geno_In[[2]],"\t"))
+
+colnames(Gcve2020_50K_SNPS_Norm_multAny) <- gsub("#CHROM","CHROM",colnames(Gcve2020_50K_SNPS_Norm_multAny))
+
+Gcve2020_50K_SNPS_Norm_multAny$CHROM <- gsub("glyma.Wm82.gnm4.Gm","Gm",Gcve2020_50K_SNPS_Norm_multAny$CHROM)
+Gcve2020_50K_SNPS_Norm_multAny$CHRPOS <- paste(Gcve2020_50K_SNPS_Norm_multAny$CHROM,Gcve2020_50K_SNPS_Norm_multAny$POS,sep="-")
+
+
+### Extract ssIDs from SoySNP50K Data
+
+ SoySNP50K_BED <- read.table("SoySNP50K_a4_v1.bed")
+ SoySNP50K_BEDTable <- SoySNP50K_BED[,c(1,2,4)]
+ colnames(SoySNP50K_BEDTable) <- c("CHROM","POS","ssID")
+ SoySNP50K_BEDTable$CHRPOS<- paste(SoySNP50K_BEDTable$CHROM,SoySNP50K_BEDTable$POS,sep="-")
+ 
+ SoySNP50K_BEDTable_Filt <- SoySNP50K_BEDTable[-which(duplicated(SoySNP50K_BEDTable$ssID)),]
+ 
+ dim(SoySNP50K_BEDTable_Filt)
+ #[1] 41815     4
+
+
+### 
+
+Gcve2020_50K_SNPS_Norm_multAny_Renamed <-  merge(SoySNP50K_BEDTable_Filt,Gcve2020_50K_SNPS_Norm_multAny,by="CHRPOS",all.y=TRUE)
+
+Gcve2020_50K_SNPS_Norm_multAny_Renamed$ID <- Gcve2020_50K_SNPS_Norm_multAny_Renamed$ssID
+rmColInd <- c(grep("ssID",colnames(Gcve2020_50K_SNPS_Norm_multAny_Renamed)),grep("CHRPOS",colnames(Gcve2020_50K_SNPS_Norm_multAny_Renamed)),grep(".x",colnames(Gcve2020_50K_SNPS_Norm_multAny_Renamed)))
+ 
+Gcve2020_50K_SNPS_Norm_multAny_Renamed_V2 <- Gcve2020_50K_SNPS_Norm_multAny_Renamed[,-rmColInd]
+colnames(Gcve2020_50K_SNPS_Norm_multAny_Renamed_V2) <- gsub("\\.y","",colnames(Gcve2020_50K_SNPS_Norm_multAny_Renamed_V2))
+
+Gcve_Geno_Final_Data <- Gcve2020_50K_SNPS_Norm_multAny_Renamed_V2
+Gcve_Geno_Final_Data_Sort <- Gcve_Geno_Final_Data[order(Gcve_Geno_Final_Data$CHROM,Gcve_Geno_Final_Data$POS),]
+
+dim(Gcve_Geno_Final_Data_Sort)
+# [1] 40253    95
+
+## Checks 
+
+starInd <- (which((Gcve_Geno_Final_Data_Sort$ALT == "*")))
+length(starInd)
+
+if(length(starInd) >0) {print(which(duplicated(Gcve_Geno_Final_Data_Sort$ID[-starInd])))}
+
+dupInd <- (which(duplicated(Gcve_Geno_Final_Data_Sort$ID)))
+length(dupInd)
+table(Gcve_Geno_Final_Data_Sort$ALT) 
+
+###
+### length(starInd)
+# Gcve_Geno_Final_Data_Sort_Filt <- Gcve_Geno_Final_Data_Sort[-starInd,] 
+
+
+### Checks  
+ 
+### 
+
+starInd <- (which((Gcve_Geno_Final_Data$ALT == "*")))
+table(Gcve_Geno_Final_Data$ALT[starInd])
+
+dupID <- Gcve_Geno_Final_Data$ID[(which(duplicated(Gcve_Geno_Final_Data$ID)))]
+#Gcve_Geno_Final_Data[which(Gcve_Geno_Final_Data$ID %in% dupID),c(1:5)]
+
+
+#### Write output 1
+ 
+Gcve_Geno_Out <-  Gcve_Geno_In
+Gcve_Geno_Out[[2]] <- colnames(Gcve_Geno_Final_Data_Sort)
+Gcve_Geno_Out[[3]] <- Gcve_Geno_Final_Data_Sort
+
+outfile <- "Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final.vcf"
+writeVCF_HeadData(Gcve_Geno_Out,outfile)
+
+
+sed -i 's/glyma.Wm82.gnm4.Gm/Gm/g' Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final.vcf
+singularity exec ./gatk_latest.sif gatk ValidateVariants -R Gmax.a4.v1.fasta -V Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final.vcf  --validation-type-to-exclude ALL
+
+
+## Other Check 
+
+awk 'NR >40 && NR<50 {out=$1;for(i=2;i<=2;i++) {out=out"\t"$i} {print out}}' Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final.vcf
+
+
+awk 'NR>1{OFS="\t";print $8,$2}' Gcve_Lowpass_2020_SoySNP50K_001_layout.txt > Gcve_2020_50K_Sample_Rename_IDs
+
+mv Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final.vcf Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final_V0.vcf
+
+## Change ND12-15647 to  ND_Rolette in Gcve_2020_Sample_IDs_Combined_V2.txt
+
+bcftools reheader -s Gcve_2020_Sample_IDs_Combined_V2.txt Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final_V0.vcf -o Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final_V1.vcf
+
+
+bcftools reheader -s Gcve_2020_50K_Sample_Rename_IDs Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final_V1.vcf -o Gencove2020_merged_vcf_SNPS_Norm_multialleleAny_50K_Final.vcf
+
+
+module load bzip2
+gunzip Gencove_2022_BARCSoySNP6K_Sort_Checked.vcf.gz
+
+
+
+awk 'NR>1 {OFS="\t"; print $1,$2}' Fixed_Gencove_ID_List_V3.txt > Gencove_IDs
+
+## Modify all duplicated IDs
+
+bcftools reheader -s Gencove_IDs Gencove_2022_BARCSoySNP6K_Sort_Checked.vcf -o Gencove_2022_BARCSoySNP6K_Sort_Checked_Renamed.vcf
+
+bcftools view  -s ^ -o Gencove_2022_BARCSoySNP6K_Sort_Checked_Renamed.vcf Gencove_2022_BARCSoySNP6K_Sort_Checked_Renamed_V2.vcf
+
+
+678 S18-1098R2
+679	ND18-22422GT2
+680	ND18-25165GT2
+681	ND17-20727-2
+690	OAC19-05C-SCN-2
+691	U19-909037-2
+750:UMN812	M07-297007HOLL-2.2
+760	Blackhawk
+
+M07-254043
+709	M07-254043-2
+780	M07-254043-3
+UMN810	M07-254043
+'M07-260009
+
+## RGcveIDs <- read.table("Gencove_IDs")
+write.table(GcveIDs[which(duplicated(GcveIDs[,2])),1],"GencoveIDs_Rm",quote=FALSE,row.names=FALSE,col.names=FALSE)
+
+bcftools view -S ^GencoveIDs_Rm Gencove_2022_BARCSoySNP6K_Sort_Checked.vcf > Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm.vcf --force-samples
+
+Warn: exclude called for sample that does not exist in header: "M17189015b"... skipping
+Warn: exclude called for sample that does not exist in header: "V73610769257D05"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB3"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB4"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB5"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB6"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB7"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB21"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB26"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB60"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB61"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB65"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB66"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB71"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB75"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB76"... skipping
+Warn: exclude called for sample that does not exist in header: "UMN2022CB77"... skipping
+
+
+
+bcftools stats Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm.vcf >  Gcve2022_RmDupStats 
+
+vi Gcve2022_RmDupStats 
+# SN    [2]id   [3]key  [4]value
+SN      0       number of samples:      1178
+SN      0       number of records:      5386
+
+
+bcftools query -l Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm.vcf > Gcve2022_Dup_Rm_Samples 
+
+Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm.vcf 
+
+bcftools reheader -s Gencove_IDs Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm.vcf -o Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm_Renamed.vcf
+bcftools query -l Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm_Renamed.vcf > Gcve2022_Dup_Rm_Samples_Renamed 
+
+
+Investigate Gencove Ids
+
+1203-2-14
+3/12/1992
+4/17/2044
+
+sed -i 's/3\/12\/1992/1992-3-12/g' Gencove_IDs 
+sed -i 's/4\/17\/2044/2044-4-17/g' Gencove_IDs  
+
+
+#### 
+
+NUST and other lines genotyped as part of Soy2022 genotyping project using Gencove low-pass 
+sequencing assay. Data from the assay was then subset to the BARCSoySNP6K Set. 
+
+####
+
+
+ awk '{FS=",";OFS="\t";if(NR>1){print $5,$1}}' Gencove2022_layout.csv > Gencove2022_TissueSampleName
+
+ awk '{FS=",";OFS="\t";if(NR>1){print $5, $1"|||"$5}}' Gencove2022_layout.csv > Gencove2022_TissueSampleName2
+
+bcftools reheader -s Gencove2022_TissueSampleName Gencove_2022_BARCSoySNP6K_Sort_Checked_Dup_Rm_Renamed.vcf -o Gencove_2022_BARCSoySNP6K_SBI_Submission.vcf

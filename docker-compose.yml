@@ -1,0 +1,61 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: containers/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SLURM_ENABLED=false
+      - SLURM_HOST=login.msi.umn.edu
+      - SLURM_USER=
+      - SLURM_WORK_DIR=/scratch.global/varianttools
+      - SLURM_PARTITION=amdsmall
+      - SLURM_ACCOUNT=
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: containers/Dockerfile.backend
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SLURM_ENABLED=false
+      - SLURM_HOST=login.msi.umn.edu
+      - SLURM_USER=
+      - SLURM_WORK_DIR=/scratch.global/varianttools
+      - SLURM_PARTITION=amdsmall
+      - SLURM_ACCOUNT=
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A backend.tasks.celery_app worker --loglevel=info --concurrency=2
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../containers/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend

@@ -1,0 +1,290 @@
+### 
+### Liftover 
+
+module load mummer 
+nucmer -p Wm82.a4_to_a6_v1 -t 32 Gmax_508_v4.0.fa Gmax_880_v6.0.fa
+
+### Crossmap delta to chain file
+
+./crossmap-workflow/scripts/crossmap_delta_to_chain.pl -fwd ./Wm82_a4_to_a6_v1_FWD.chain -rev ./Wm82_a4_to_a6_v1_REV.chain ./Wm82.a4_to_a6_v1.delta 
+
+
+
+# I) ### liftover from A4 .bed to A6 .bed
+
+./liftOver ./Gcve_SoySNP50K_A4_V1.bed ./Wm82_a4_to_a6_v1_FWD.chain ./Out/SoySNP50K_A6_V1_FWD.bed  ./Out/SoySNP50K_A6_V1_unlifted_FWD.bed
+./liftOver ./Gcve_SoySNP50K_A4_V1.bed ./Wm82_a4_to_a6_v1_REV.chain ./Out/SoySNP50K_A6_V1_REV.bed  ./Out/SoySNP50K_A6_V1_unlifted_REV.bed
+
+
+
+#0-based half-open coordinates in the BED file used for liftover to 1-based open coordinates in the VCF file 
+
+### 
+
+wc -l SoySNP50K_A6_V1_*
+  34967 SoySNP50K_A6_V1_FWD.bed
+   7878 SoySNP50K_A6_V1_REV.bed
+   2394 SoySNP50K_A6_V1_unlifted_FWD.bed
+  56572 SoySNP50K_A6_V1_unlifted_REV.bed
+
+# 101811 total
+
+#### 
+#records of FWD 34967 + 2394
+[1] 37361
+#records of REV 56572 + 7878 
+
+
+sort -k1,1 -k2,2n SoySNP50K_A6_V1_FWD.bed > SoySNP50K_A6_V1_FWD_Srtd.bed
+sort -k1,1 -k2,2n SoySNP50K_A6_V1_REV.bed >SoySNP50K_A6_V1_REV_Srtd.bed
+
+cat SoySNP50K_A6_V1_FWD_Srtd.bed SoySNP50K_A6_V1_REV_Srtd.bed > SoySNP50K_A6_V1_Full_Srtd.bed
+
+
+####################
+#II ## Crossmap workflow 
+
+ module load crossmap/0.7.3
+   
+#### A4 to A6 Version
+
+ CrossMap bed ./Wm82_a4_to_a6_v1_FWD.chain ./Gcve_SoySNP50K_A4_V1.bed | grep -v "Unmap" > ./Gcve_SoySNP50K_A4_V1_fwd.tsv
+ CrossMap bed ./Wm82_a4_to_a6_v1_REV.chain ./Gcve_SoySNP50K_A4_V1.bed  | grep -v "Unmap" > ./Gcve_SoySNP50K_A4_V1_rev_TMP
+ 
+  
+### Delta Filter and Show_coords
+
+./mummer-4.0.0rc1/delta-filter -q Wm82.a4_to_a6_v1.delta -i 99.5 -l 1000 > ./Wm82.a4_to_a6_v1.filter
+./mummer-4.0.0rc1/show-coords -rclT ./Wm82.a4_to_a6_v1.filter > ./Wm82.a4_to_a6_v1.coords
+
+  
+#### Recover Rev Coords
+
+  grep -h '>' ./Wm82.a4_to_a6_v1.filter | sed 's/>//' | awk -v OFS="\t" '{print $2, $4}' | sort -u > Out/Q_chr_sizes.tsv
+ 
+### Use perl script (gives warnings and errors)
+ ./crossmap-workflow/scripts/crossmap_recover_rev_coords.pl \
+   -q Out/Q_chr_sizes.tsv \ 
+   -m ./Out/Gcve_SoySNP50K_A4_V1_rev_TMP \ 
+   -o Out/Gcve_SoySNP50K_A4_to_A6_V1_rev.tsv
+
+### Use awk 
+ ./Recover_Rev_Coords_Awk.sh 
+ 
+ 
+### Combine by Cat 
+
+ mv Gcve_SoySNP50K_A4_V1_fwd.tsv Gcve_SoySNP50K_A4_to_A6_V1_fwd.tsv
+ cat Gcve_SoySNP50K_A4_to_A6_V1_fwd.tsv Gcve_SoySNP50K_A4_to_A6_V1_rev.tsv > Gcve_SoySNP50K_A4_to_A6_V1_Full.tsv
+
+### Suggested Combine after sorting 
+
+sort -k1,1 -k2,2n Gcve_SoySNP50K_A4_to_A6_V1_fwd.tsv > Gcve_SoySNP50K_A4_to_A6_fwd.sorted
+sort -k1,1 -k2,2n Gcve_SoySNP50K_A4_to_A6_V1_rev.tsv > Gcve_SoySNP50K_A4_to_A6_rev.sorted
+
+cat Gcve_SoySNP50K_A4_to_A6_fwd.sorted Gcve_SoySNP50K_A4_to_A6_rev.sorted > Gcve_SoySNP50K_A4_to_A6_V1_Full.tsv
+
+### 
+
+wc -l Gcve_SoySNP50K_A4_to_A6_V1_*
+  61816 Gcve_SoySNP50K_A4_to_A6_V1_Full.tsv
+  37414 Gcve_SoySNP50K_A4_to_A6_V1_fwd.tsv
+  24402 Gcve_SoySNP50K_A4_to_A6_V1_rev.tsv
+
+### 
+
+## Fwd Tab
+Gcve50K_A4_to_A6_Fwd <- read.table("Gcve_SoySNP50K_A4_to_A6_V1_fwd.tsv")
+Gcve50K_A4_to_A6_Fwd_Tab <- Gcve50K_A4_to_A6_Fwd[,c(1:3,5:7)]
+colnames(Gcve50K_A4_to_A6_Fwd_Tab) <- c("Chrom.A4","Start.A4","End.A4","Chrom.A6","Start.A6","End.A6")
+
+##
+Gcve50K_A4_to_A6_Fwd_Tab$ChrPos.A4 <- paste(Gcve50K_A4_to_A6_Fwd_Tab$Chrom.A4,Gcve50K_A4_to_A6_Fwd_Tab$Start.A4,sep="-")
+Gcve50K_A4_to_A6_Fwd_Tab$ChrPos.A6 <- paste(Gcve50K_A4_to_A6_Fwd_Tab$Chrom.A6,Gcve50K_A4_to_A6_Fwd_Tab$Start.A6,sep="-")
+
+## 
+length(which(duplicated(Gcve50K_A4_to_A6_Fwd_Tab$ChrPos.A6)))
+#[1] 745
+length(which(duplicated(Gcve50K_A4_to_A6_Fwd_Tab$ChrPos.A4)))
+#1] 1289
+
+dupA6FwdInd <- which(duplicated(Gcve50K_A4_to_A6_Fwd_Tab$ChrPos.A6))
+Gcve50K_A4_to_A6_Fwd_Tab_Filt <- Gcve50K_A4_to_A6_Fwd_Tab[-dupA6FwdInd,]
+
+length(which(duplicated(Gcve50K_A4_to_A6_Fwd_Tab_Filt$ChrPos.A4)))
+length(unique(Gcve50K_A4_to_A6_Fwd_Tab_Filt$ChrPos.A4))
+
+### 
+Gcve50K_A4_to_A6_Rev <- read.table("Gcve_SoySNP50K_A4_to_A6_V1_rev.tsv")
+Gcve50K_A4_to_A6_Rev_Tab <- Gcve50K_A4_to_A6_Rev
+colnames(Gcve50K_A4_to_A6_Rev_Tab) <- c("Chrom.A4","Start.A4","End.A4","Map","Chrom.A6","Start.A6","End.A6")
+
+Gcve50K_A4_to_A6_Rev_Tab$ChrPos.A4 <- paste(Gcve50K_A4_to_A6_Rev_Tab$Chrom.A4,Gcve50K_A4_to_A6_Rev_Tab$Start.A4,sep="-")
+
+###
+Gcve50K_A4_to_A6_Full <- read.table("Gcve_SoySNP50K_A4_to_A6_V1_Full.tsv")
+Gcve50K_A4_to_A6_Full_Tab <- Gcve50K_A4_to_A6_Full
+colnames(Gcve50K_A4_to_A6_Full_Tab) <- c("Chrom.A4","Start.A4","End.A4","Map","Chrom.A6","Start.A6","End.A6")
+
+Gcve50K_A4_to_A6_Full_Tab$ChrPos.A4 <- paste(Gcve50K_A4_to_A6_Full_Tab$Chrom.A4,Gcve50K_A4_to_A6_Full_Tab$Start.A4,sep="-")
+
+Gcve50K_A4_to_A6_Full_Tab_Filt <- Gcve50K_A4_to_A6_Full_Tab[-which(duplicated(Gcve50K_A4_to_A6_Full_Tab$ChrPos.A4)),]
+dim(Gcve50K_A4_to_A6_Full_Tab_Filt)
+[1] 36164     8
+
+###
+Gcve50K_A4_to_A6_Map <- Gcve50K_A4_to_A6_Full_Tab_Filt[,c("Chrom.A4","Start.A4","Chrom.A6","Start.A6")]
+Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6 <- paste(Gcve50K_A4_to_A6_Full_Tab_Filt$Chrom.A6,Gcve50K_A4_to_A6_Full_Tab_Filt$Start.A6,sep="-")
+Gcve50K_A4_to_A6_Full_Tab$ChrPosA6 <- paste(Gcve50K_A4_to_A6_Full_Tab$Chrom.A6,Gcve50K_A4_to_A6_Full_Tab$Start.A6,sep="-")
+
+length(unique(Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6))
+#[1] 36164
+
+dim( Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6)
+# NULL
+
+dim(Gcve50K_A4_to_A6_Full_Tab_Filt)
+#[1] 36164     9
+
+# Gcve50K_A4_to_A6_Full_Tab_Filt[1:5,]
+  Chrom.A4 Start.A4 End.A4 Map Chrom.A6 Start.A6 End.A6  ChrPos.A4    ChrPosA6
+1     Gm01    24952  24953  ->     Gm01    75799  75800 Gm01-24952  Gm01-75799
+2     Gm01    26003  26004  ->     Gm01    76850  76851 Gm01-26003  Gm01-76850
+3     Gm01    29671  29672  ->     Gm01    80518  80519 Gm01-29671  Gm01-80518
+4     Gm01    46373  46374  ->     Gm01    97220  97221 Gm01-46373  Gm01-97220
+5     Gm01    49238  49239  ->     Gm01   100085 100086 Gm01-49238 Gm01-100085
+
+
+Gcve50K_A4_to_A6_Full_XMap <-  Gcve50K_A4_to_A6_Full_Tab_Filt[,c("Chrom.A4","Start.A4","Chrom.A6","Start.A6")]
+
+write.table(Gcve50K_A4_to_A6_Full_XMap,"Gcve50K_A4_to_A6_Full_XMap.txt",quote=F,sep="\t",row.names=F)
+
+
+
+### 
+length(unique(Gcve50K_A4_to_A6_Full_Tab$ChrPosA6))
+# [1] 61056
+
+
+### LiftOver coordinates
+
+Gcve50K_A6_Full_LO <- read.table("SoySNP50K_A6_V1_Full_Srtd.bed")
+colnames(Gcve50K_A6_Full_LO) <- c("Chrom.A6","Start.A6","End.A6")
+
+Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6 <- paste(Gcve50K_A4_to_A6_Full_Tab_Filt$Chrom.A6,Gcve50K_A4_to_A6_Full_Tab_Filt$Start.A6,sep="-")
+
+Gcve50K_A6_Full_LO$ChrPosA6 <- paste(Gcve50K_A6_Full_LO$Chrom.A6,Gcve50K_A6_Full_LO$Start.A6,sep="-")
+
+length(which(Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6 %in% Gcve50K_A6_Full_LO$ChrPosA6))
+
+length(unique(Gcve50K_A6_Full_LO$ChrPosA6))
+#[1] 42845
+
+##
+
+### Compare CxMap and LiftOver(LO)
+
+
+length(which(Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6 %in% Gcve50K_A6_Full_LO$ChrPosA6))
+#[1] 34967
+
+length(which(Gcve50K_A4_to_A6_Full_Tab$ChrPosA6 %in% Gcve50K_A6_Full_LO$ChrPosA6))
+#[1] 34974
+
+
+###
+# Sdwt_Lines_Gcve2020_2023_SoySNP50K_SNPs_GT.vcf
+
+
+##### 
+
+module load lastz
+module load kent
+
+#### 
+lastz Gmax_508_v4.0.fa[multiple] Gmax_880_v6.0.fa \
+--step=10 --hspthresh=2500 --gappedthresh=3700 \
+--chain --format=axt > Gmax_a4_to_a6.axt 
+
+### 
+
+
+module load minimap2/ 
+
+minimap2 --options 
+## # asm5/asm10/asm20 - asm-to-ref mapping, for ~0.1/1/5% sequence divergence
+
+minimap2 -x asm5 -t 32 -c Gmax_508_v4.0.fa Gmax_880_v6.0.fa > Gmax_a4_to_a6_aln.paf
+
+[M::mm_idx_gen::16.708*1.44] collected minimizers
+[M::mm_idx_gen::18.788*2.17] sorted minimizers
+[M::main::18.788*2.17] loaded/built the index for 282 target sequence(s)
+[M::mm_mapopt_update::19.986*2.10] mid_occ = 353
+[M::mm_idx_stat] kmer size: 19; skip: 19; is_hpc: 0; #seq: 282
+[M::mm_idx_stat::20.780*2.06] distinct minimizers: 55874990 (84.98% are singletons); average occurrences: 1.726; average spacing: 10.143; total length: 978386919
+
+[M::worker_pipeline::280.269*6.42] mapped 10 sequences
+[M::worker_pipeline::495.526*6.83] mapped 10 sequences
+[M::main] Version: 2.30-r1287
+[M::main] CMD: minimap2 -x asm5 -t 32 Gmax_508_v4.0.fa Gmax_880_v6.0.fa
+[M::main] Real time: 496.153 sec; CPU: 3384.234 sec; Peak RSS: 60.914 GB
+
+
+
+ minimap2 -x asm5 -t 32 -c Gmax_508_v4.0.fa Gmax_880_v6.0.fa > Gmax_a4_to_a6_aln.paf
+
+[M::mm_idx_gen::16.704*1.51] collected minimizers
+[M::mm_idx_gen::18.844*2.25] sorted minimizers
+[M::main::18.844*2.25] loaded/built the index for 282 target sequence(s)
+[M::mm_mapopt_update::20.106*2.17] mid_occ = 353
+[M::mm_idx_stat] kmer size: 19; skip: 19; is_hpc: 0; #seq: 282
+[M::mm_idx_stat::21.143*2.11] distinct minimizers: 55874990 (84.98% are singletons); average occurrences: 1.726; average spacing: 10.143; total length: 978386919
+[M::worker_pipeline::305.314*6.87] mapped 10 sequences
+[M::worker_pipeline::535.120*7.26] mapped 10 sequences
+[M::main] Version: 2.30-r1287
+[M::main] CMD: minimap2 -x asm5 -t 32 -c Gmax_508_v4.0.fa Gmax_880_v6.0.fa
+[M::main] Real time: 535.517 sec; CPU: 3883.431 sec; Peak RSS: 67.683 GB
+
+##Check CIGAR in output PAF
+grep -m1 -o 'cg:Z:[^[:space:]]*' /users/0/vramasub/Desktop/Gmax_a4_to_a6_aln.paf
+# should print something like: cg:Z:100=1X50=...
+
+## paftools.js Liftover 
+
+paftools.js liftover /users/0/vramasub/Desktop/Gmax_a4_to_a6_aln.paf /users/0/vramasub/Desktop/Gcve_SoySNP50K_A4_V1.bed > ~/Desktop/LiftOverTools/Minimap2/Gcve_SoySNP50K_A6_V1_Mmap.bed
+
+awk 'BEGIN{OFS="\t";}{print $1,$2,$3}' Gcve_SoySNP50K_A6_V1_Mmap.bed > Gcve_SoySNP50K_a6_V1_Mmap.bed
+
+# or liftover VCF similarly
+
+Gcve50_A6_MMap <- read.table("Gcve_SoySNP50K_a6_V1_Mmap.bed") 
+Gcve50_A6_MMap[1:5,]
+colnames(Gcve50_A6_MMap) <- c("Chrom.A6","Start.A6","End.A6")
+
+ 
+Gcve50_A6_MMap_Tab <- Gcve50_A6_MMap[,c("Chrom.A6","Start.A6")]
+Gcve50_A6_MMap_Tab$ChrPosA6 <- paste(Gcve50_A6_MMap_Tab$Chrom.A6,Gcve50_A6_MMap_Tab$Start.A6,sep="-")
+ 
+ length(unique(Gcve50_A6_MMap_Tab$ChrPosA6))
+[1] 33911
+> length((Gcve50_A6_MMap_Tab$ChrPosA6))
+[1] 34017
+
+
+
+
+length(which(Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6 %in% unique(Gcve50_A6_MMap_Tab$ChrPosA6))
+#[1] 34967
+
+length(which(Gcve50K_A4_to_A6_Full_Tab$ChrPosA6 %in% Gcve50K_A6_Full_LO$ChrPosA6))
+
+length(which(Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6 %in% unique(Gcve50_A6_MMap_Tab$ChrPosA6))
++ )
+[1] 3
+> length(which(Gcve50K_A4_to_A6_Full_Tab_Filt$ChrPosA6 %in% Gcve50_A6_MMap_Tab$ChrPosA6))
+[1] 3
+ 
+ 
+ 
+ 
+ 

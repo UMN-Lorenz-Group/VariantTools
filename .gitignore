@@ -1,0 +1,28 @@
+# Claude session data
+.claude/
+
+# Data directories (uploads, outputs, chain files — user-placed, not source)
+data/uploads/
+data/outputs/
+data/chains/
+data/*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

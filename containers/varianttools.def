@@ -1,0 +1,107 @@
+# VariantTools Singularity Definition File — v0.3.0
+#
+# Build on MSI:
+#   singularity build varianttools.sif varianttools.def
+#
+# Run API server:
+#   singularity run --bind ./data:/app/data varianttools.sif
+#
+# Run Celery worker:
+#   singularity exec --bind ./data:/app/data varianttools.sif \
+#     celery -A backend.tasks.celery_app worker --loglevel=info --concurrency=2
+#
+# Requires Redis (run separately):
+#   singularity exec docker://redis:7-alpine redis-server &
+#   export REDIS_URL=redis://localhost:6379/0
+#
+# Environment variables (set before running):
+#   REDIS_URL            - Redis connection string (default: redis://localhost:6379/0)
+#   SLURM_ENABLED        - Enable SLURM script generation (default: false)
+#   SLURM_HOST           - MSI login node (default: login.msi.umn.edu)
+#   SLURM_USER           - Your MSI username
+#   SLURM_WORK_DIR       - Working directory on scratch (default: /scratch.global/$USER/varianttools)
+#   SLURM_PARTITION      - SLURM partition (default: amdsmall)
+#   SLURM_ACCOUNT        - SLURM account (optional)
+
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Author VariantTools Development Team
+    Version 0.3.0
+    Description "VariantTools genomics variant processing suite — Phase 3"
+    Maintainer "University of Minnesota — Lorenz Lab"
+
+%post
+    set -euo pipefail
+
+    echo "=== Installing system dependencies ==="
+    apt-get update -qq && apt-get install -y --no-install-recommends \
+        bcftools \
+        tabix \
+        bgzip \
+        libcurl4-openssl-dev \
+        zlib1g-dev \
+        curl \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+
+    echo "=== Installing Python dependencies ==="
+    pip install --no-cache-dir \
+        fastapi \
+        "uvicorn[standard]" \
+        celery \
+        redis \
+        python-multipart \
+        aiofiles \
+        sqlmodel \
+        pydantic \
+        "CrossMap==0.7.3"
+
+    echo "=== Creating application directories ==="
+    mkdir -p /app/data/uploads /app/data/outputs /app/data/chains /app/logs
+
+    echo "=== Build complete ==="
+
+%environment
+    export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+    export PYTHONPATH="/app:$PYTHONPATH"
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    # Default Redis URL (override at runtime)
+    export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
+    # SLURM defaults (disabled by default)
+    export SLURM_ENABLED="${SLURM_ENABLED:-false}"
+    export SLURM_HOST="${SLURM_HOST:-login.msi.umn.edu}"
+    export SLURM_USER="${SLURM_USER:-}"
+    export SLURM_WORK_DIR="${SLURM_WORK_DIR:-/scratch.global/$USER/varianttools}"
+    export SLURM_PARTITION="${SLURM_PARTITION:-amdsmall}"
+    export SLURM_ACCOUNT="${SLURM_ACCOUNT:-}"
+
+%runscript
+    #!/bin/bash
+    # Default run: start the FastAPI server
+    cd /app
+    exec uvicorn backend.main:app --host 0.0.0.0 --port 8000
+
+%help
+    VariantTools v0.3.0 — Genomics Variant Processing Suite
+
+    Modules:
+      - VCF Stats & Assembly (bcftools stats)
+      - Liftover (CrossMap)
+      - Fix Reference (bcftools +fixref)
+      - Merge VCFs (bcftools merge)
+      - VCF Generator (dosage matrix to VCF)
+      - SLURM script download (MSI HPC support)
+
+    Quick start:
+      singularity run --bind ./data:/app/data varianttools.sif
+
+    Celery worker:
+      singularity exec --bind ./data:/app/data varianttools.sif \
+        celery -A backend.tasks.celery_app worker --loglevel=info
+
+    Custom port:
+      singularity exec --bind ./data:/app/data varianttools.sif \
+        uvicorn backend.main:app --host 0.0.0.0 --port 8080

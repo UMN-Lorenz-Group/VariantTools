@@ -1,0 +1,15 @@
+i) Design an app that can perform the following functions 
+
+   i)  Generate VCF files from genotypic data or convert formats
+   ii)  Load VCF and display bcftools stats 
+   iii) Fetch reference assembly version that the VCF is called against
+   iv)
+   iv)  liftover coordinates to other assemblies using uploaded or available chain files in a database
+   v)   use bcftools +fixref to verify ref matches and perform -m flip (swap/flip etc.,)
+   vi)  merge vcf files 
+   
+   For planning: include answers to the following questions:
+   What is the best interface next.js/ streamlit? 
+   What is the best architecture for such a genomics application? 
+   what kind of computational resources do you need? Do you need cloud computing resources, etc.c, 
+   

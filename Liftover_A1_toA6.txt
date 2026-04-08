@@ -1,0 +1,106 @@
+
+
+### Liftover 
+
+module load mummer 
+nucmer -p Wm82.a1_to_a6_v1 -t 32 Gmax.a1.v1.fasta Gmax_880_v6.0.fa
+
+### Crossmap delta to chain file
+
+./crossmap-workflow/scripts/crossmap_delta_to_chain.pl -fwd ./Wm82_a1_to_a6_v1_FWD.chain -rev ./Wm82_a1_to_a6_v1_REV.chain ./Wm82.a1_to_a6_v1.delta 
+
+
+awk 'BEGIN{OFS="\t";}{if(NR>33){print $1,$2,$2+1}}' AGP_PYT_2024_Genotypes_a1_v1_Gm.vcf > AGP_SoySNP1K_A1_V1.bed
+
+####################
+#II ## Crossmap workflow 
+
+ module load crossmap/0.7.3
+   
+#### A1 to A6 Version
+
+ CrossMap bed ./Wm82_a1_to_a6_v1_FWD.chain ./AGP_SoySNP1K_A1_V1.bed | grep -v "Unmap" > ./AGP_Soy1K_A1_to_A6_V1_fwd.tsv
+ CrossMap bed ./Wm82_a1_to_a6_v1_REV.chain ./AGP_SoySNP1K_A1_V1.bed  | grep -v "Unmap" > ./AGP_Soy1K_A1_to_A6_V1_rev_TMP
+ 
+  
+### Delta Filter and Show_coords
+module load mummer/
+
+delta-filter -q Wm82.a1_to_a6_v1.delta -i 99.5 -l 1000 > ./Wm82.a1_to_a6_v1.filter
+show-coords -rclT ./Wm82.a1_to_a6_v1.filter > ./Wm82.a1_to_a6_v1.coords
+
+  
+#### Recover Rev Coords
+
+ grep -h '>' ./Wm82.a1_to_a6_v1.filter | sed 's/>//' | awk -v OFS="\t" '{print $2, $4}' | sort -u > Out/Q_chr_sizes_a1_to_a6_1K.tsv
+
+
+### Use awk 
+ ./Recover_Rev_Coords_Awk.sh 
+  
+### Combine by Cat 
+
+cat AGP_Soy1K_A1_to_A6_V1_fwd.tsv AGP_Soy1K_A1_to_A6_V1_rev.tsv > AGP_Soy1K_A1_to_A6_V1_Full.tsv
+
+### Suggested Combine after sorting 
+
+sort -k1,1 -k2,2n AGP_Soy1K_A1_to_A6_V1_fwd.tsv > AGP_Soy1K_A1_to_A6_fwd_sorted.tsv
+sort -k1,1 -k2,2n AGP_Soy1K_A1_to_A6_V1_rev.tsv > AGP_Soy1K_A1_to_A6_rev_sorted.tsv
+
+cat AGP_Soy1K_A1_to_A6_fwd_sorted.tsv AGP_Soy1K_A1_to_A6_rev_sorted.tsv > AGP_Soy1K_A1_to_A6_V1_Full.tsv
+
+### 
+
+wc -l AGP_Soy1K_A1_to_A6_V1_*
+   2006 AGP_Soy1K_A1_to_A6_V1_Full.tsv
+  1281 AGP_Soy1K_A1_to_A6_V1_fwd.tsv
+   725 AGP_Soy1K_A1_to_A6_V1_rev.tsv
+   725 AGP_Soy1K_A1_to_A6_V1_rev_TMP
+  4737 total
+
+### 
+###
+AGP1K_A1_to_A6_Full <- read.table("AGP_Soy1K_A1_to_A6_V1_Full.tsv")
+AGP1K_A1_to_A6_Full_Tab <- AGP1K_A1_to_A6_Full
+colnames(AGP1K_A1_to_A6_Full_Tab) <- c("Chrom.A1","Start.A1","End.A1","Map","Chrom.A6","Start.A6","End.A6")
+
+AGP1K_A1_to_A6_Full_Tab$ChrPos.A1 <- paste(AGP1K_A1_to_A6_Full_Tab$Chrom.A1,AGP1K_A1_to_A6_Full_Tab$Start.A1,sep="-")
+AGP1K_A1_to_A6_Full_Tab_Filt <- AGP1K_A1_to_A6_Full_Tab[-which(duplicated(AGP1K_A1_to_A6_Full_Tab$ChrPos.A1)),]
+dim(AGP1K_A1_to_A6_Full_Tab_Filt)
+[1] 1242    8
+
+###
+AGP1K_A1_to_A6_Map <- AGP1K_A1_to_A6_Full_Tab_Filt[,c("Chrom.A1","Start.A1","Chrom.A6","Start.A6")]
+AGP1K_A1_to_A6_Full_Tab_Filt$ChrPosA6 <- paste(AGP1K_A1_to_A6_Full_Tab_Filt$Chrom.A6,AGP1K_A1_to_A6_Full_Tab_Filt$Start.A6,sep="-")
+AGP1K_A1_to_A6_Full_Tab$ChrPosA6 <- paste(AGP1K_A1_to_A6_Full_Tab$Chrom.A6,AGP1K_A1_to_A6_Full_Tab$Start.A6,sep="-")
+
+length(unique(AGP1K_A1_to_A6_Full_Tab_Filt$ChrPosA6))
+#[1] 1242
+
+dim(AGP1K_A1_to_A6_Full_Tab_Filt)
+# [1] 1242    9
+
+# AGP1K_A1_to_A6_Full_Tab_Filt[1:5,]
+  Chrom.A1 Start.A1 End.A1 Map Chrom.A6 Start.A6 End.A6  ChrPos.A1    ChrPosA6
+1     Gm01    24952  24953  ->     Gm01    75799  75800 Gm01-24952  Gm01-75799
+2     Gm01    26003  26004  ->     Gm01    76850  76851 Gm01-26003  Gm01-76850
+3     Gm01    29671  29672  ->     Gm01    80518  80519 Gm01-29671  Gm01-80518
+4     Gm01    46373  46374  ->     Gm01    97220  97221 Gm01-46373  Gm01-97220
+5     Gm01    49238  49239  ->     Gm01   100085 100086 Gm01-49238 Gm01-100085
+
+
+AGP1K_A1_to_A6_Full_XMap <-  AGP1K_A1_to_A6_Full_Tab_Filt[,c("Chrom.A1","Start.A1","Chrom.A6","Start.A6")]
+
+AGP1K_A1_to_A6_Full_XMap[1:5,]
+  Chrom.A1 Start.A1 Chrom.A6 Start.A6
+1     Gm01   138835     Gm01   189406
+2     Gm01   510342     Gm01   559601
+3     Gm01  1059407     Gm01  1109509
+4     Gm01  1502816     Gm01  1552020
+5     Gm01  2267573     Gm01  2323146
+> dim(AGP1K_A1_to_A6_Full_XMap)
+[1] 1242    4
+
+write.table(AGP1K_A1_to_A6_Full_XMap,"AGP_Soy1K_A1_to_A6_Full_XMap.txt",quote=F,sep="\t",row.names=F)
+
+
