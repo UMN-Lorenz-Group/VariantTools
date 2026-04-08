@@ -26,3 +26,6 @@ frontend/.env.local
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated docs
+*.docx
