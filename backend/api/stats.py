@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 from backend.core.bcftools import parse_vcf_header
 from backend.core.file_manager import save_upload
@@ -66,6 +67,63 @@ async def upload_and_analyze(file: UploadFile = File(...)):
     task = run_stats_task.delay(job_id, saved_path)
 
     # Update job with task ID
+    with get_session() as session:
+        job = session.get(Job, job_id)
+        if job:
+            job.celery_task_id = task.id
+            session.add(job)
+            session.commit()
+
+    assembly_info = {
+        "assembly_guess": header_info["assembly_guess"],
+        "reference": header_info["reference"],
+        "file_format": header_info["file_format"],
+        "contig_count": len(header_info["contig_lines"]),
+        "recognized": header_info["assembly_guess"] is not None,
+    }
+
+    return {
+        "job_id": job_id,
+        "assembly_info": assembly_info,
+        "status": "pending",
+    }
+
+
+class AnalyzeByIdRequest(BaseModel):
+    file_id: str
+
+
+@router.post("/analyze-by-id")
+async def analyze_by_id(body: AnalyzeByIdRequest):
+    """Run stats analysis on an already-uploaded VCF by its file_id (path).
+
+    Same response shape as /upload-and-analyze. Used by pipeline auto-fill
+    so downstream modules can skip re-uploading an already-saved file.
+    """
+    if not Path(body.file_id).exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {body.file_id}")
+
+    filename = Path(body.file_id).name
+
+    try:
+        header_info = parse_vcf_header(body.file_id)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to parse VCF header: {exc}")
+
+    job_id = str(uuid.uuid4())
+    with get_session() as session:
+        job = Job(
+            id=job_id,
+            module="stats",
+            status="pending",
+            input_files=json.dumps([filename]),
+            created_at=datetime.utcnow(),
+        )
+        session.add(job)
+        session.commit()
+
+    task = run_stats_task.delay(job_id, body.file_id)
+
     with get_session() as session:
         job = session.get(Job, job_id)
         if job:

@@ -18,7 +18,7 @@ import {
 export interface SubstitutionTypeDatum {
   type: string;
   count: number;
-  pct: number;
+  pct: number | null;
 }
 
 export interface PerSampleDatum {
@@ -75,7 +75,9 @@ function SubTooltip({ active, payload, label }: CustomTooltipProps) {
     <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs">
       <p className="font-semibold text-white mb-1">{label}</p>
       <p className="text-gray-300">Count: {d.count.toLocaleString()}</p>
-      <p className="text-gray-300">Percentage: {d.pct.toFixed(2)}%</p>
+      {d.pct != null && (
+        <p className="text-gray-300">Percentage: {d.pct.toFixed(2)}%</p>
+      )}
     </div>
   );
 }

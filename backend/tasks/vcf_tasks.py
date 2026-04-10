@@ -187,59 +187,97 @@ def run_generator_task(
     assembly: str,
     output_path: str,
     orientation: str,
+    input_type: str = "genotype_matrix",
+    header_file_path: str = None,
 ) -> dict:
-    """Generate a VCF from a dosage matrix. Updates DB. Returns summary dict.
+    """Generate a VCF from a dosage matrix, Agriplex, or DArTag file.
 
-    Reads both files from disk (saved at upload time as bytes).
-    Parses, generates VCF, writes to output_path.
-    Result includes: snp_count, sample_count, missing_pct, output_file.
+    Updates DB. Returns summary dict.
+    Result includes: snp_count, sample_count, missing_pct, output_file,
+    vcf_valid, vcf_check_message.
     """
     _update_job(job_id, status="running", celery_task_id=self.request.id)
 
     try:
         with open(geno_path, "rb") as f:
             geno_content = f.read()
-        with open(snp_info_path, "rb") as f:
-            snp_content = f.read()
 
-        # Parse genotype matrix
-        sample_ids, snp_ids, matrix = parse_genotype_table(geno_content, sep="auto")
-
-        # Parse SNP info
-        snp_info = parse_snp_info_table(snp_content, sep="auto")
-
-        # Align SNP IDs: if snp_info count != genotype snp count, use snp_info as authoritative
-        # (the matrix columns correspond to SNPs in their original file order;
-        #  snp_info is sorted by CHROM/POS — we use snp_info order for VCF output)
-        # If counts match, proceed; otherwise warn via result
         count_mismatch_msg = None
-        if len(snp_info) != len(snp_ids):
-            count_mismatch_msg = (
-                f"SNP count mismatch: genotype file has {len(snp_ids)} SNPs, "
-                f"SNP info file has {len(snp_info)}. Using min count."
-            )
-            # Trim to minimum to avoid index errors
-            min_snps = min(len(snp_info), len(snp_ids))
-            snp_info = snp_info[:min_snps]
-            matrix = [row[:min_snps] for row in matrix]
+
+        if input_type == "agriplex":
+            from backend.core.vcf_generator import parse_agriplex_table
+            sample_ids, snp_info, matrix = parse_agriplex_table(geno_content)
+        elif input_type == "dartag":
+            from backend.core.vcf_generator import parse_dartag_table
+            sample_ids, snp_info, matrix = parse_dartag_table(geno_content)
+        else:
+            # genotype_matrix: existing logic
+            with open(snp_info_path, "rb") as f:
+                snp_content = f.read()
+            sample_ids, snp_ids, matrix = parse_genotype_table(geno_content, sep="auto")
+            snp_info = parse_snp_info_table(snp_content, sep="auto")
+            # SNP count alignment (keep existing mismatch check)
+            if len(snp_info) != len(snp_ids):
+                min_count = min(len(snp_info), len(snp_ids))
+                count_mismatch_msg = (
+                    f"SNP count mismatch: genotype file has {len(snp_ids)} SNPs, "
+                    f"SNP info file has {len(snp_info)}. Using min count."
+                )
+                snp_info = snp_info[:min_count]
+                matrix = [row[:min_count] for row in matrix]
+
+        # Deduplicate sample IDs (VCF requires unique sample names)
+        seen: dict = {}
+        deduped: list[str] = []
+        for sid in sample_ids:
+            if sid in seen:
+                seen[sid] += 1
+                deduped.append(f"{sid}_dup{seen[sid]}")
+            else:
+                seen[sid] = 0
+                deduped.append(sid)
+        if len(set(deduped)) != len(sample_ids):
+            # Fallback: append index for any remaining duplicates
+            deduped = [f"{sid}_{i}" if deduped.count(sid) > 1 else sid
+                       for i, sid in enumerate(deduped)]
+        sample_ids = deduped
+
+        # Resolve extra header lines from optional header file
+        extra_header_lines = None
+        if header_file_path:
+            from backend.core.vcf_generator import parse_vcf_header_file
+            with open(header_file_path, "rb") as f:
+                hdr_content = f.read()
+            hdr_parsed = parse_vcf_header_file(hdr_content)
+            extra_header_lines = hdr_parsed.get("extra_lines")
+
+        # DArTag and Agriplex parsers return pre-translated VCF GT strings
+        pre_translated = input_type in ("dartag", "agriplex")
 
         # Calculate missing percentage before generating VCF
-        missing_pct = calculate_missing_pct(sample_ids, snp_info, matrix)
+        missing_pct = calculate_missing_pct(sample_ids, snp_info, matrix, pre_translated=pre_translated)
 
         # Generate VCF string
-        vcf_str = generate_vcf(sample_ids, snp_info, matrix, assembly)
+        vcf_str = generate_vcf(sample_ids, snp_info, matrix, assembly, extra_header_lines, pre_translated=pre_translated)
 
         # Write to output path
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(vcf_str)
+
+        # bcftools validation
+        import asyncio as _asyncio
+        from backend.core.bcftools import run_bcftools_validate
+        vcf_check = _asyncio.run(run_bcftools_validate(output_path))
 
         summary: dict = {
             "snp_count": len(snp_info),
             "sample_count": len(sample_ids),
             "missing_pct": missing_pct,
             "output_file": output_path,
+            "vcf_valid": vcf_check["ok"],
+            "vcf_check_message": vcf_check["message"],
         }
-        if count_mismatch_msg:
+        if input_type == "genotype_matrix" and count_mismatch_msg:
             summary["warning"] = count_mismatch_msg
 
         result_json = json.dumps(summary)

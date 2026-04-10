@@ -8,6 +8,7 @@ import {
   Download,
   Database,
   Dna,
+  Link2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import FileUpload from '@/components/FileUpload';
@@ -16,6 +17,7 @@ import type {
   SubstitutionTypeDatum,
   PerSampleDatum,
 } from '@/components/StatsChart';
+import { usePipeline } from '@/context/PipelineContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -83,7 +85,10 @@ function getSummaryValue(summary: StatsSummary, ...keys: string[]): number | str
 // ---------------------------------------------------------------------------
 
 export default function StatsPage() {
+  const { pipelineVcf } = usePipeline();
+
   const [file, setFile] = useState<File | null>(null);
+  const [pipelineFileActive, setPipelineFileActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string>('idle');
@@ -144,19 +149,27 @@ export default function StatsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!file) return;
+    if (!file && !pipelineFileActive) return;
     setUploading(true);
     setError(null);
     setJobStatus('uploading');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch(`${API_BASE}/api/stats/upload-and-analyze`, {
-        method: 'POST',
-        body: formData,
-      });
+      let res: Response;
+      if (pipelineFileActive && pipelineVcf) {
+        res = await fetch(`${API_BASE}/api/stats/analyze-by-id`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_id: pipelineVcf.file_id }),
+        });
+      } else {
+        const formData = new FormData();
+        formData.append('file', file!);
+        res = await fetch(`${API_BASE}/api/stats/upload-and-analyze`, {
+          method: 'POST',
+          body: formData,
+        });
+      }
 
       if (!res.ok) {
         const detail = await res.json().catch(() => ({ detail: res.statusText }));
@@ -186,6 +199,7 @@ export default function StatsPage() {
   const isRunning = jobStatus === 'pending' || jobStatus === 'running' || uploading;
   const isDone = jobStatus === 'completed';
   const isFailed = jobStatus === 'failed';
+  const canSubmit = (!!file || pipelineFileActive) && !isRunning && !isDone;
 
   // Extract key stats
   const snpCount = statsResult
@@ -215,47 +229,64 @@ export default function StatsPage() {
       </div>
 
       {/* Upload card */}
-      <div className="card">
-        <h2 className="text-sm font-semibold text-gray-300 mb-4 uppercase tracking-wide">
+      <div className="card space-y-4">
+        <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
           1. Upload VCF File
         </h2>
-        <FileUpload
-          accept=".vcf,.vcf.gz"
-          multiple={false}
-          onFiles={handleFileSelected}
-          label="Drop VCF file here or click to browse"
-          description="Supports .vcf and .vcf.gz"
-        />
 
-        {file && (
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-gray-400">
-              Selected: <span className="text-gray-200 font-medium">{file.name}</span>
-            </p>
+        {/* Pipeline auto-fill */}
+        {pipelineVcf && !isDone && (
+          <div className="flex items-center gap-3 bg-blue-950/30 border border-blue-800/50 rounded-lg px-4 py-3">
+            <Link2 size={14} className="text-blue-400 flex-shrink-0" />
+            <span className="text-xs text-blue-300 flex-1">
+              Pipeline VCF available: <span className="font-mono text-blue-200">{pipelineVcf.filename}</span>
+            </span>
             <button
-              onClick={handleSubmit}
-              disabled={isRunning || isDone}
-              className="btn-primary"
+              onClick={() => { setPipelineFileActive(true); setFile(null); }}
+              className={`text-xs px-3 py-1 rounded border transition-colors ${
+                pipelineFileActive
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'border-blue-700 text-blue-400 hover:bg-blue-900/40'
+              }`}
             >
-              {isRunning ? (
-                <>
-                  <Loader2 size={15} className="animate-spin" />
-                  Analyzing…
-                </>
-              ) : isDone ? (
-                <>
-                  <CheckCircle size={15} />
-                  Completed
-                </>
-              ) : (
-                <>
-                  <Database size={15} />
-                  Analyze VCF
-                </>
-              )}
+              {pipelineFileActive ? '✓ Using pipeline VCF' : 'Use pipeline VCF'}
             </button>
           </div>
         )}
+
+        {!pipelineFileActive && (
+          <FileUpload
+            accept=".vcf,.vcf.gz"
+            multiple={false}
+            onFiles={handleFileSelected}
+            label="Drop VCF file here or click to browse"
+            description="Supports .vcf and .vcf.gz"
+          />
+        )}
+
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <p className="text-sm text-gray-400">
+            {pipelineFileActive
+              ? <span>Using: <span className="text-gray-200 font-mono">{pipelineVcf?.filename}</span></span>
+              : file
+              ? <span>Selected: <span className="text-gray-200 font-medium">{file.name}</span></span>
+              : <span className="text-gray-600">No file selected</span>
+            }
+          </p>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="btn-primary"
+          >
+            {isRunning ? (
+              <><Loader2 size={15} className="animate-spin" />Analyzing…</>
+            ) : isDone ? (
+              <><CheckCircle size={15} />Completed</>
+            ) : (
+              <><Database size={15} />Analyze VCF</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Error banner */}
@@ -405,18 +436,29 @@ export default function StatsPage() {
             </div>
           )}
 
-          {/* Download */}
-          <div className="card flex items-center justify-between">
+          {/* Download + pipeline passthrough */}
+          <div className="card flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-sm font-medium text-gray-200">Download Raw Stats</p>
               <p className="text-xs text-gray-500 mt-0.5">
                 Full bcftools stats text output for this job
               </p>
             </div>
-            <button onClick={handleDownload} className="btn-secondary">
-              <Download size={15} />
-              Download .txt
-            </button>
+            <div className="flex gap-2">
+              <button onClick={handleDownload} className="btn-secondary">
+                <Download size={15} />
+                Download .txt
+              </button>
+              {pipelineVcf && (
+                <button
+                  onClick={() => {}} // already in pipeline — no-op, just visual confirmation
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-blue-900/40 border border-blue-700 text-blue-300 cursor-default"
+                >
+                  <Link2 size={14} />
+                  Pipeline VCF active
+                </button>
+              )}
+            </div>
           </div>
         </>
       )}

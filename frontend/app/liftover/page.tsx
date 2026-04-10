@@ -11,9 +11,11 @@ import {
   ChevronUp,
   Upload,
   Server,
+  Link2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import FileUpload from '@/components/FileUpload';
+import { usePipeline } from '@/context/PipelineContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,6 +74,8 @@ function pctBadgeClass(pct: number): string {
 // ---------------------------------------------------------------------------
 
 export default function LiftoverPage() {
+  const { pipelineVcf, setPipelineVcf } = usePipeline();
+
   // Chain files
   const [chainFiles, setChainFiles] = useState<ChainFileRecord[]>([]);
   const [chainLoading, setChainLoading] = useState(true);
@@ -92,6 +96,7 @@ export default function LiftoverPage() {
   const [inputFormat, setInputFormat] = useState<'vcf' | 'bed'>('vcf');
   const [outputFilename, setOutputFilename] = useState('liftover_output.vcf');
   const [uploadingInput, setUploadingInput] = useState(false);
+  const [usingPipeline, setUsingPipeline] = useState(false);
 
   // Job
   const [jobId, setJobId] = useState<string | null>(null);
@@ -515,13 +520,42 @@ export default function LiftoverPage() {
           2. Upload Input File
         </h2>
 
-        <FileUpload
-          accept=".vcf,.vcf.gz,.bed"
-          multiple={false}
-          onFiles={handleInputFileSelected}
-          label="Drop VCF or BED file here or click to browse"
-          description="Supports .vcf, .vcf.gz, and .bed"
-        />
+        {/* Pipeline auto-fill */}
+        {pipelineVcf && !isDone && (
+          <div className="flex items-center gap-3 bg-blue-950/30 border border-blue-800/50 rounded-lg px-4 py-3">
+            <Link2 size={14} className="text-blue-400 flex-shrink-0" />
+            <span className="text-xs text-blue-300 flex-1">
+              Pipeline VCF: <span className="font-mono text-blue-200">{pipelineVcf.filename}</span>
+            </span>
+            <button
+              onClick={() => {
+                setUsingPipeline(true);
+                setUploadedFileId(pipelineVcf.file_id);
+                setUploadedFileName(pipelineVcf.filename);
+                setInputFormat('vcf');
+                const base = pipelineVcf.filename.replace(/\.(vcf\.gz|vcf|bcf)$/, '');
+                setOutputFilename(`${base}_lifted.vcf`);
+              }}
+              className={`text-xs px-3 py-1 rounded border transition-colors ${
+                usingPipeline
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'border-blue-700 text-blue-400 hover:bg-blue-900/40'
+              }`}
+            >
+              {usingPipeline ? '✓ Using pipeline VCF' : 'Use pipeline VCF'}
+            </button>
+          </div>
+        )}
+
+        {!usingPipeline && (
+          <FileUpload
+            accept=".vcf,.vcf.gz,.bed"
+            multiple={false}
+            onFiles={handleInputFileSelected}
+            label="Drop VCF or BED file here or click to browse"
+            description="Supports .vcf, .vcf.gz, and .bed"
+          />
+        )}
 
         {uploadingInput && (
           <div className="flex items-center gap-2 text-sm text-gray-400">
@@ -643,7 +677,7 @@ export default function LiftoverPage() {
             </div>
           </div>
 
-          {/* Downloads */}
+          {/* Downloads + pipeline */}
           <div className="flex flex-wrap gap-3">
             <button onClick={handleDownloadMapped} className="btn-primary">
               <Download size={15} />
@@ -655,6 +689,21 @@ export default function LiftoverPage() {
                 Download Unmapped ({result.unmapped.toLocaleString()} entries)
               </button>
             )}
+            <button
+              onClick={() =>
+                setPipelineVcf({
+                  file_id: result.output_file,
+                  filename: outputFilename,
+                  sample_count: pipelineVcf?.sample_count,
+                  source: 'liftover',
+                })
+              }
+              className="btn-primary"
+              style={{ backgroundColor: '#2563eb' }}
+            >
+              <Link2 size={15} />
+              Use in pipeline →
+            </button>
           </div>
         </div>
       )}

@@ -8,8 +8,11 @@ import {
   Loader2,
   Download,
   Upload,
+  Link2,
+  FolderOpen,
 } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
+import { usePipeline } from '@/context/PipelineContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,6 +48,8 @@ interface GeneratorResult {
   output_file: string;
   file_size?: number;
   warning?: string;
+  vcf_valid?: boolean;
+  vcf_check_message?: string;
 }
 
 interface StatusResponse {
@@ -58,12 +63,26 @@ interface StatusResponse {
 }
 
 type Orientation = 'samples_as_rows' | 'snps_as_rows' | 'auto';
+type ActiveTab = 'load' | 'generate';
+
+interface LoadVcfResult {
+  file_id: string;
+  filename: string;
+  valid: boolean;
+  vcf_check_message: string;
+  sample_count: number;
+  assembly_detected: string | null;
+  reference_line: string | null;
+  contig_count: number;
+  file_format: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const API_BASE = API_URL;
 
 const ASSEMBLY_OPTIONS = [
   'Wm82.a6.v1',
@@ -93,6 +112,17 @@ function formatPct(pct: number): string {
 // ---------------------------------------------------------------------------
 
 export default function GeneratorPage() {
+  const { setPipelineVcf } = usePipeline();
+
+  // Active tab
+  const [activeTab, setActiveTab] = useState<ActiveTab>('load');
+
+  // Load VCF tab state
+  const [loadPendingFile, setLoadPendingFile] = useState<File | null>(null);
+  const [loadUploading, setLoadUploading] = useState(false);
+  const [loadResult, setLoadResult] = useState<LoadVcfResult | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   // Genotype upload state
   const [genoFileId, setGenoFileId] = useState<string | null>(null);
   const [genoPreview, setGenoPreview] = useState<GenoPreviewRow[]>([]);
@@ -108,6 +138,13 @@ export default function GeneratorPage() {
   const [snpBadge, setSnpBadge] = useState<SnpBadge | null>(null);
   const [uploadingSnp, setUploadingSnp] = useState(false);
   const [pendingSnpFile, setPendingSnpFile] = useState<File | null>(null);
+
+  // Input type and header file state
+  const [inputType, setInputType] = useState<'genotype_matrix' | 'agriplex' | 'dartag'>('genotype_matrix');
+  const [pendingHeaderFile, setPendingHeaderFile] = useState<File | null>(null);
+  const [headerFileId, setHeaderFileId] = useState<string | null>(null);
+  const [headerContigCount, setHeaderContigCount] = useState<number>(0);
+  const [contigCheck, setContigCheck] = useState<{ ok: boolean; matched: number; missing: string[] } | null>(null);
 
   // Generation options
   const [assembly, setAssembly] = useState<string>('Wm82.a6.v1');
@@ -130,6 +167,36 @@ export default function GeneratorPage() {
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // Upload header file when pendingHeaderFile changes
+  useEffect(() => {
+    if (!pendingHeaderFile) return;
+    const upload = async () => {
+      const fd = new FormData();
+      fd.append('file', pendingHeaderFile);
+      const res = await fetch(`${API_URL}/api/generator/upload-header`, { method: 'POST', body: fd });
+      if (res.ok) {
+        const data = await res.json();
+        setHeaderFileId(data.file_id);
+        setHeaderContigCount(data.contig_count);
+      }
+    };
+    upload();
+  }, [pendingHeaderFile]);
+
+  // Run contig check when both snpFileId and headerFileId are set
+  useEffect(() => {
+    if (!snpFileId || !headerFileId) return;
+    const check = async () => {
+      const res = await fetch(`${API_URL}/api/generator/check-contigs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ header_file_id: headerFileId, snp_file_id: snpFileId }),
+      });
+      if (res.ok) setContigCheck(await res.json());
+    };
+    check();
+  }, [snpFileId, headerFileId]);
 
   const pollJob = useCallback(
     async (id: string) => {
@@ -158,6 +225,35 @@ export default function GeneratorPage() {
   );
 
   // ---------------------------------------------------------------------------
+  // Load VCF (integrity check)
+  // ---------------------------------------------------------------------------
+  const handleLoadVcf = async () => {
+    if (!loadPendingFile) return;
+    setLoadUploading(true);
+    setLoadError(null);
+    setLoadResult(null);
+
+    try {
+      const fd = new FormData();
+      fd.append('file', loadPendingFile);
+      const res = await fetch(`${API_BASE}/api/generator/load-vcf`, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(detail.detail ?? `Upload failed: ${res.status}`);
+      }
+      const data: LoadVcfResult = await res.json();
+      setLoadResult(data);
+    } catch (err) {
+      setLoadError(String(err));
+    } finally {
+      setLoadUploading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
   // Upload genotype file
   // ---------------------------------------------------------------------------
   const handleUploadGeno = async () => {
@@ -173,7 +269,7 @@ export default function GeneratorPage() {
       formData.append('file', pendingGenoFile);
       formData.append('orientation', orientation);
 
-      const res = await fetch(`${API_BASE}/api/generator/upload-genotypes?orientation=${orientation}`, {
+      const res = await fetch(`${API_BASE}/api/generator/upload-genotypes?orientation=${orientation}&input_type=${inputType}`, {
         method: 'POST',
         body: formData,
       });
@@ -254,7 +350,7 @@ export default function GeneratorPage() {
   // Submit generation
   // ---------------------------------------------------------------------------
   const handleGenerate = async () => {
-    if (!genoFileId || !snpFileId) return;
+    if (!genoFileId || (inputType === 'genotype_matrix' && !snpFileId)) return;
     const effectiveAssembly = assembly === 'Custom...' ? customAssembly.trim() : assembly;
     if (!effectiveAssembly) {
       setError('Please enter a custom assembly name.');
@@ -272,16 +368,21 @@ export default function GeneratorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           geno_file_id: genoFileId,
-          snp_file_id: snpFileId,
+          snp_file_id: snpFileId ?? '',
           assembly: effectiveAssembly,
           output_filename: outputFilename || 'output.vcf',
           orientation,
+          input_type: inputType,
+          header_file_id: headerFileId ?? undefined,
         }),
       });
 
       if (!res.ok) {
         const detail = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(detail.detail ?? `Submit failed: ${res.status}`);
+        const msg = typeof detail.detail === 'string'
+          ? detail.detail
+          : JSON.stringify(detail.detail);
+        throw new Error(msg ?? `Submit failed: ${res.status}`);
       }
 
       const data: { job_id: string; status: string } = await res.json();
@@ -310,7 +411,11 @@ export default function GeneratorPage() {
   const isDone = jobStatus === 'completed';
   const effectiveAssembly = assembly === 'Custom...' ? customAssembly : assembly;
   const canGenerate =
-    !!genoFileId && !!snpFileId && !!effectiveAssembly.trim() && !isRunning && !isDone;
+    !!genoFileId &&
+    (inputType !== 'genotype_matrix' || !!snpFileId) &&
+    !!effectiveAssembly.trim() &&
+    !isRunning &&
+    !isDone;
 
   const snpCountMismatch =
     genoBadge && snpBadge && genoBadge.snp_count !== snpBadge.snp_count;
@@ -324,12 +429,165 @@ export default function GeneratorPage() {
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <FilePlus2 size={22} className="text-green-400" />
-          VCF Generator
+          Load / Generate VCF
         </h1>
         <p className="text-gray-400 text-sm mt-1">
-          Convert genotype dosage matrices (0/1/2) to standard VCF format (0/0, 0/1, 1/1).
+          Load an existing VCF for integrity checking, or generate a new VCF from genotype data.
         </p>
       </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-2 border-b border-gray-800 pb-0">
+        {(['load', 'generate'] as ActiveTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === tab
+                ? 'border-green-500 text-green-400'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            {tab === 'load' ? (
+              <span className="flex items-center gap-1.5"><FolderOpen size={14} />Load VCF</span>
+            ) : (
+              <span className="flex items-center gap-1.5"><FilePlus2 size={14} />Generate VCF</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Load VCF tab                                                        */}
+      {/* ------------------------------------------------------------------ */}
+      {activeTab === 'load' && (
+        <div className="space-y-4">
+          <div className="card space-y-4">
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+              Upload VCF File
+            </h2>
+            <p className="text-xs text-gray-500">
+              Accepts .vcf, .vcf.gz, or .bcf. Validates with bcftools and extracts header info.
+            </p>
+            <FileUpload
+              accept=".vcf,.vcf.gz,.bcf"
+              multiple={false}
+              onFiles={(files) => {
+                setLoadPendingFile(files[0] ?? null);
+                setLoadResult(null);
+                setLoadError(null);
+              }}
+              label="Drop VCF file here or click to browse"
+              description="Accepts .vcf, .vcf.gz, .bcf"
+            />
+            {loadPendingFile && !loadResult && (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-400">{loadPendingFile.name} ready</p>
+                <button
+                  onClick={handleLoadVcf}
+                  disabled={loadUploading}
+                  className="btn-primary"
+                >
+                  {loadUploading ? (
+                    <><Loader2 size={14} className="animate-spin" />Checking…</>
+                  ) : (
+                    <><Upload size={14} />Check Integrity</>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {loadError && (
+            <div className="flex items-start gap-3 bg-red-950/60 border border-red-800 rounded-xl px-5 py-4">
+              <AlertCircle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-red-300">Error</p>
+                <p className="text-sm text-red-400 mt-0.5">{loadError}</p>
+              </div>
+            </div>
+          )}
+
+          {loadResult && (
+            <div className="card space-y-4">
+              <div className="flex items-center gap-2">
+                {loadResult.valid ? (
+                  <CheckCircle size={18} className="text-green-400" />
+                ) : (
+                  <AlertCircle size={18} className="text-red-400" />
+                )}
+                <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+                  Integrity Check — {loadResult.valid ? 'Passed' : 'Failed'}
+                </h2>
+              </div>
+
+              {!loadResult.valid && (
+                <p className="text-xs text-red-400 bg-red-950/40 border border-red-800 rounded px-3 py-2">
+                  {loadResult.vcf_check_message}
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="stat-card">
+                  <p className="text-xs text-gray-500">Samples</p>
+                  <p className="text-2xl font-bold text-white">
+                    {loadResult.sample_count.toLocaleString()}
+                  </p>
+                </div>
+                <div className="stat-card">
+                  <p className="text-xs text-gray-500">Contigs</p>
+                  <p className="text-2xl font-bold text-white">
+                    {loadResult.contig_count.toLocaleString()}
+                  </p>
+                </div>
+                <div className="stat-card">
+                  <p className="text-xs text-gray-500">Assembly</p>
+                  <p className="text-lg font-bold text-white truncate">
+                    {loadResult.assembly_detected ?? '—'}
+                  </p>
+                </div>
+                <div className="stat-card">
+                  <p className="text-xs text-gray-500">Format</p>
+                  <p className="text-lg font-bold text-white">
+                    {loadResult.file_format ?? '—'}
+                  </p>
+                </div>
+              </div>
+
+              {loadResult.reference_line && (
+                <p className="text-xs text-gray-500">
+                  ##reference: <span className="text-gray-300 font-mono">{loadResult.reference_line}</span>
+                </p>
+              )}
+
+              {loadResult.valid && (
+                <button
+                  onClick={() =>
+                    setPipelineVcf({
+                      file_id: loadResult.file_id,
+                      filename: loadResult.filename,
+                      sample_count: loadResult.sample_count,
+                      assembly: loadResult.assembly_detected ?? undefined,
+                      source: 'load',
+                    })
+                  }
+                  className="btn-primary"
+                  style={{ backgroundColor: '#2563eb' }}
+                >
+                  <Link2 size={14} />
+                  Use in pipeline →
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Generate VCF tab                                                    */}
+      {/* ------------------------------------------------------------------ */}
+      {activeTab === 'generate' && (
+      <>
 
       {/* Error banner */}
       {error && (
@@ -342,13 +600,42 @@ export default function GeneratorPage() {
         </div>
       )}
 
+      {/* Input Type Selector */}
+      <div className="card mb-6">
+        <label className="block text-sm font-medium text-gray-300 mb-2">Input Format</label>
+        <div className="flex gap-2">
+          {(['genotype_matrix', 'agriplex', 'dartag'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setInputType(t)}
+              className={`px-4 py-2 rounded text-sm font-medium border transition-colors ${
+                inputType === t
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-transparent text-gray-400 border-gray-600 hover:border-blue-400'
+              }`}
+            >
+              {t === 'genotype_matrix' ? 'Genotype Matrix (0/1/2)' : t === 'agriplex' ? 'Agriplex' : 'DArTag'}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          {inputType === 'genotype_matrix' && 'Numeric dosage table (0/1/2). Requires separate VCF ID table.'}
+          {inputType === 'agriplex' && 'Agriplex CSV with BARC marker rows (BARC_1_01_Gm01_POS_REF_ALT). CHROM/POS/REF/ALT extracted from marker IDs.'}
+          {inputType === 'dartag' && 'DArTag CSV with marker rows named Gm01_POS_REF_ALT. Colon-separated genotypes (A:G). Missing = -/-.'}
+        </p>
+      </div>
+
       {/* Step 1: Genotype Matrix */}
       <div className="card space-y-4">
         <h2 className="text-sm font-semibold text-gray-300 mb-1 uppercase tracking-wide">
           1. Genotype Matrix
         </h2>
         <p className="text-xs text-gray-500">
-          Upload a dosage matrix file. Values should be 0, 1, 2, or NA/missing.
+          {inputType === 'genotype_matrix'
+            ? 'Upload a dosage matrix file. Values should be 0, 1, 2, or NA/missing.'
+            : inputType === 'agriplex'
+            ? 'Upload Agriplex genotype CSV. Marker IDs should be in BARC_X_XX_GmXX_POS_REF_ALT format.'
+            : 'Upload DArTag genotype CSV. Marker IDs should be in GmXX_POS_REF_ALT format.'}
         </p>
 
         {/* Orientation selector */}
@@ -456,63 +743,127 @@ export default function GeneratorPage() {
         )}
       </div>
 
-      {/* Step 2: SNP Info */}
+      {/* Step 2: SNP Info + VCF Header */}
       <div className="card space-y-4">
         <h2 className="text-sm font-semibold text-gray-300 mb-1 uppercase tracking-wide">
-          2. SNP Info Table
+          2. SNP Info &amp; Header
         </h2>
-        <p className="text-xs text-gray-500">
-          Upload a SNP metadata file with columns: CHROM, POS, REF, ALT (and optionally ID).
-        </p>
 
-        <FileUpload
-          accept=".txt,.csv,.tsv,.bed"
-          multiple={false}
-          onFiles={(files) => setPendingSnpFile(files[0] ?? null)}
-          label="Drop SNP info file here or click to browse"
-          description="Accepts .txt, .csv, .tsv, .bed"
-        />
-
-        {pendingSnpFile && !snpFileId && (
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-400">
-              {pendingSnpFile.name} ready to upload
-            </p>
-            <button
-              onClick={handleUploadSnp}
-              disabled={uploadingSnp}
-              className="btn-primary"
-            >
-              {uploadingSnp ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Uploading & parsing…
-                </>
-              ) : (
-                <>
-                  <Upload size={14} />
-                  Upload & Preview
-                </>
+        {/* SNP ID + VCF Header row */}
+        <div className="grid grid-cols-2 gap-4">
+          {/* Left: VCF ID table */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              VCF ID Table{' '}
+              {inputType !== 'genotype_matrix' && (
+                <span className="text-gray-500 font-normal">(optional)</span>
               )}
-            </button>
-          </div>
-        )}
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              {inputType === 'genotype_matrix'
+                ? 'Required: CHROM, POS, REF, ALT (and optionally ID).'
+                : 'Optional SNP metadata. If omitted, CHROM/POS/REF/ALT are extracted from marker IDs.'}
+            </p>
+            <FileUpload
+              accept=".txt,.csv,.tsv,.bed"
+              multiple={false}
+              onFiles={(files) => setPendingSnpFile(files[0] ?? null)}
+              label="Drop SNP info file here or click to browse"
+              description="Accepts .txt, .csv, .tsv, .bed"
+            />
 
-        {/* Badge */}
-        {snpBadge && (
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 bg-green-900/30 border border-green-700 text-green-300 text-xs px-3 py-1 rounded-full">
-              <CheckCircle size={12} />
-              SNPs: {snpBadge.snp_count.toLocaleString()} | Columns: [{snpBadge.columns_found.join(', ')}]
-            </span>
-            {snpCountMismatch && (
-              <span className="inline-flex items-center gap-1.5 bg-yellow-900/30 border border-yellow-700 text-yellow-300 text-xs px-3 py-1 rounded-full">
-                <AlertCircle size={12} />
-                SNP count mismatch: genotype has {genoBadge!.snp_count.toLocaleString()} vs SNP info has {snpBadge.snp_count.toLocaleString()}
-              </span>
+            {pendingSnpFile && !snpFileId && (
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-sm text-gray-400 truncate">
+                  {pendingSnpFile.name}
+                </p>
+                <button
+                  onClick={handleUploadSnp}
+                  disabled={uploadingSnp}
+                  className="btn-primary ml-2"
+                >
+                  {uploadingSnp ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Uploading…
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={14} />
+                      Upload
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Badge */}
+            {snpBadge && (
+              <div className="flex flex-wrap items-center gap-3 mt-2">
+                <span className="inline-flex items-center gap-1.5 bg-green-900/30 border border-green-700 text-green-300 text-xs px-3 py-1 rounded-full">
+                  <CheckCircle size={12} />
+                  SNPs: {snpBadge.snp_count.toLocaleString()} | Columns: [{snpBadge.columns_found.join(', ')}]
+                </span>
+                {snpCountMismatch && (
+                  <span className="inline-flex items-center gap-1.5 bg-yellow-900/30 border border-yellow-700 text-yellow-300 text-xs px-3 py-1 rounded-full">
+                    <AlertCircle size={12} />
+                    SNP count mismatch: genotype has {genoBadge!.snp_count.toLocaleString()} vs SNP info has {snpBadge.snp_count.toLocaleString()}
+                  </span>
+                )}
+              </div>
             )}
           </div>
-        )}
+
+          {/* Right: VCF Header file */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              VCF Header File <span className="text-gray-500 font-normal">(optional)</span>
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Upload a .txt or .vcf file containing ##contig lines to inject into the output header.
+            </p>
+            <div
+              className="border-2 border-dashed border-gray-700 rounded-lg p-4 text-center cursor-pointer hover:border-blue-500 transition-colors"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files[0];
+                if (f) setPendingHeaderFile(f);
+              }}
+              onClick={() => document.getElementById('header-file-input')?.click()}
+            >
+              <input
+                id="header-file-input"
+                type="file"
+                className="hidden"
+                accept=".txt,.vcf"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) setPendingHeaderFile(f);
+                }}
+              />
+              {pendingHeaderFile ? (
+                <p className="text-sm text-gray-300">{pendingHeaderFile.name}</p>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Drop .txt or .vcf header file here
+                  <br />
+                  Contains ##contig lines
+                </p>
+              )}
+            </div>
+            {headerFileId && (
+              <p className="text-xs text-green-500 mt-1">&#10003; {headerContigCount} contigs loaded</p>
+            )}
+            {contigCheck && (
+              <p className={`text-xs mt-1 ${contigCheck.ok ? 'text-green-500' : 'text-yellow-400'}`}>
+                {contigCheck.ok
+                  ? `\u2713 All ${contigCheck.matched} contigs match`
+                  : `\u26a0 ${contigCheck.missing.length} contigs missing: ${contigCheck.missing.slice(0, 3).join(', ')}${contigCheck.missing.length > 3 ? '...' : ''}`}
+              </p>
+            )}
+          </div>
+        </div>
 
         {/* Preview table */}
         {snpPreview.length > 0 && (
@@ -611,7 +962,7 @@ export default function GeneratorPage() {
           <p className="text-xs text-gray-500 mt-0.5">
             {!genoFileId
               ? 'Upload and preview a genotype matrix first.'
-              : !snpFileId
+              : inputType === 'genotype_matrix' && !snpFileId
               ? 'Upload and preview a SNP info file.'
               : !effectiveAssembly.trim()
               ? 'Enter a custom assembly name.'
@@ -711,17 +1062,44 @@ export default function GeneratorPage() {
             </div>
           </div>
 
+          {result?.vcf_valid !== undefined && (
+            <div className={`mt-3 p-2 rounded text-sm ${result.vcf_valid ? 'bg-green-950/40 text-green-400' : 'bg-red-950/40 text-red-400'}`}>
+              {result.vcf_valid ? '✓ bcftools validation passed' : `✗ bcftools: ${result.vcf_check_message}`}
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-2 border-t border-gray-800">
             <div>
               <p className="text-sm font-medium text-gray-200">Download Generated VCF</p>
               <p className="text-xs text-gray-500 mt-0.5">Plain text VCF v4.3 format</p>
             </div>
-            <button onClick={handleDownload} className="btn-primary" style={{ backgroundColor: '#16a34a' }}>
-              <Download size={15} />
-              Download VCF
-            </button>
+            <div className="flex gap-2">
+              <button onClick={handleDownload} className="btn-primary" style={{ backgroundColor: '#16a34a' }}>
+                <Download size={15} />
+                Download VCF
+              </button>
+              {result.output_file && (
+                <button
+                  onClick={() =>
+                    setPipelineVcf({
+                      file_id: result.output_file,
+                      filename: outputFilename || 'output.vcf',
+                      sample_count: result.sample_count,
+                      source: 'generate',
+                    })
+                  }
+                  className="btn-primary"
+                  style={{ backgroundColor: '#2563eb' }}
+                >
+                  <Link2 size={15} />
+                  Use in pipeline →
+                </button>
+              )}
+            </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

@@ -13,3 +13,52 @@ i) Design an app that can perform the following functions
    What is the best architecture for such a genomics application? 
    what kind of computational resources do you need? Do you need cloud computing resources, etc.c, 
    
+   
+   
+I) Redesign VCF Generator: 
+
+ VCF generator section needs to have another file input option to include VCF header information. 
+ This file input should be to the right of VCFID input. 
+ 
+ii) a helper script that examines the contig information matches the VCFID input. For this use VCFHead_V4.3_Gm and VCIFTab_CB19_PYT23_50K_FixdRef.txt as templates 
+iii) check the integrity of generated VCF file to avoid errors like this using bcftools to avoid errors :  
+     /mcp to http://localhost:3000/stats to see the error 
+Data input option
+i) Drop genotype matrix hsould be one option. 
+ii) Agriplex data table input option 
+iii) DArTag data input option 
+
+DArTag to VCF processing needs to be based on a generalized version of this script: 
+./Scripts/DArt_vs_Agriplex_Comparison_V2.r
+
+Agriplex data to VCF processing needs to be based on a generalized version of this script:
+./ScriptsAGP_PYT2025_Genotypes_Prep.R 
+
+
+Restructure modules into pipeline
+
+
+### I) VCF generator needs to renamed as Load/Generate VCF 
+a) Move this module right after HOME
+b) Load module : Load VCF and check for integrity of VCF 
+c) Generate VCF : Retain same functionalities in the current one 
+
+### II) Save the VCF for next steps in the pipeline
+
+d) Stats and Assembly information: Most VCF files donot contain reference assembly information.. 
+   or Coordinates table, if available. 
+
+### FixRef 
+e) the second option is to fixRef against available assemblies for a species.. 
+
+### III) Liftover module 
+c) Chain files upload and liftover. 
+
+### IV) Fixref again to make sure the final VCF is QCed and has the coordinates and REF/ALT calls against the intended ref assembly
+
+###
+claude --resume "pipeline-restructure-vcf" 
+
+###
+
+

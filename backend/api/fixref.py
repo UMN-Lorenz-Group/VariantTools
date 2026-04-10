@@ -230,12 +230,14 @@ async def get_fixref_status(job_id: str):
             "error_message": job.error_message,
             "before": None,
             "after": None,
+            "output_file": None,
         }
 
         if job.status == "completed" and job.result_json:
             summary = json.loads(job.result_json)
             result["before"] = summary.get("before")
             result["after"] = summary.get("after")
+            result["output_file"] = summary.get("output_file")
 
         return result
 

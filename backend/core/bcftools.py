@@ -9,34 +9,94 @@ import os
 from pathlib import Path
 
 
+async def _strip_info_fields(vcf_path: str, fields: list[str]) -> str:
+    """Run bcftools annotate -x to strip INFO fields from a VCF.
+
+    Returns path to a temp cleaned file. Caller is responsible for cleanup.
+    Needed when INFO fields like AN/AC appear in data rows without header
+    definitions, which causes bcftools stats to hard-fail.
+    """
+    tmp_path = vcf_path + ".cleaned.vcf"
+    remove_expr = ",".join(f"INFO/{f}" for f in fields)
+    proc = await asyncio.create_subprocess_exec(
+        "bcftools", "annotate", "--force", "-x", remove_expr, vcf_path, "-o", tmp_path,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"bcftools annotate failed (exit {proc.returncode}): {stderr.decode()}"
+        )
+    return tmp_path
+
+
 async def run_bcftools_stats(vcf_path: str) -> tuple[str, str]:
-    """Run bcftools stats on a VCF. Returns (stdout, stderr)."""
+    """Run bcftools stats on a VCF. Returns (stdout, stderr).
+
+    Automatically strips INFO/AN and INFO/AC if they are undefined in the
+    header — bcftools stats hard-fails with exit 1 on these fields when they
+    lack proper header definitions.
+    """
+    import tempfile
+
+    _STRIP_FIELDS = ["AN", "AC"]
+    cleaned_path: str | None = None
+
     try:
+        # First attempt
         proc = await asyncio.create_subprocess_exec(
             "bcftools", "stats", vcf_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await proc.communicate()
+
+        # If it failed due to undefined AN/AC INFO fields, strip and retry
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"bcftools stats failed (exit {proc.returncode}): {stderr.decode()}"
-            )
+            err_text = stderr.decode()
+            if "AN" in err_text or "AC" in err_text:
+                cleaned_path = await _strip_info_fields(vcf_path, _STRIP_FIELDS)
+                proc2 = await asyncio.create_subprocess_exec(
+                    "bcftools", "stats", cleaned_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc2.communicate()
+                if proc2.returncode != 0:
+                    raise RuntimeError(
+                        f"bcftools stats failed after stripping INFO fields "
+                        f"(exit {proc2.returncode}): {stderr.decode()}"
+                    )
+            else:
+                raise RuntimeError(
+                    f"bcftools stats failed (exit {proc.returncode}): {err_text}"
+                )
+
         return stdout.decode(), stderr.decode()
+
     except FileNotFoundError:
         raise RuntimeError(
             "bcftools is not installed or not on PATH. "
             "Install bcftools (e.g. apt-get install bcftools) and retry."
         )
+    finally:
+        # Clean up temp file if it was created
+        if cleaned_path and os.path.exists(cleaned_path):
+            try:
+                os.remove(cleaned_path)
+            except OSError:
+                pass
 
 
 async def parse_bcftools_stats(stats_output: str) -> dict:
     """Parse bcftools stats text output into a structured dict.
 
     Extracts:
-      SN  — summary numbers (key-value pairs)
-      ST  — substitution type counts {type, count, pct}
-      PSC — per-sample coverage stats {sample_id, hom_RR, het, hom_AA, missing}
+      SN   — summary numbers (key-value pairs)
+      TSTV — Ts/Tv counts and ratio → added to summary as 'ts', 'tv', 'Ts/Tv'
+      ST   — substitution type counts {type, count, pct}
+      PSC  — per-sample coverage stats {sample_id, hom_RR, het, hom_AA, missing}
 
     Returns:
       {"summary": {...}, "substitution_types": [...], "per_sample": [...]}
@@ -67,15 +127,25 @@ async def parse_bcftools_stats(stats_output: str) -> dict:
                         value = value_str
                 summary[key] = value
 
-        elif section == "ST":
-            # ST  0  type  count  pct
+        elif section == "TSTV":
+            # TSTV  0  ts  tv  ts/tv  ts(1stALT)  tv(1stALT)  ts/tv(1stALT)
             if len(parts) >= 5:
+                try:
+                    summary["ts"] = int(parts[2].strip())
+                    summary["tv"] = int(parts[3].strip())
+                    summary["Ts/Tv"] = float(parts[4].strip())
+                except (ValueError, IndexError):
+                    pass
+
+        elif section == "ST":
+            # ST  0  type  count  [pct]  — pct column absent in some bcftools versions
+            if len(parts) >= 4:
                 try:
                     substitution_types.append(
                         {
                             "type": parts[2].strip(),
                             "count": int(parts[3].strip()),
-                            "pct": float(parts[4].strip()),
+                            "pct": float(parts[4].strip()) if len(parts) >= 5 else None,
                         }
                     )
                 except (ValueError, IndexError):
@@ -83,8 +153,6 @@ async def parse_bcftools_stats(stats_output: str) -> dict:
 
         elif section == "PSC":
             # PSC 0 id  sample  hom_RR  het  hom_AA  ts  tv  indel  missing  ...
-            # Column indices (0-based after split):
-            #  0=PSC 1=idx 2=id 3=sample 4=hom_RR 5=het 6=hom_AA 7=ts 8=tv 9=indel 10=missing
             if len(parts) >= 11:
                 try:
                     per_sample.append(
@@ -238,6 +306,20 @@ _ASSEMBLY_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"mm10|GRCm38", re.IGNORECASE), "GRCm38/mm10"),
     (re.compile(r"mm39|GRCm39", re.IGNORECASE), "GRCm39/mm39"),
 ]
+
+
+async def run_bcftools_validate(vcf_path: str) -> dict:
+    """Run bcftools view to validate VCF integrity. Returns {ok, message}."""
+    import asyncio
+    proc = await asyncio.create_subprocess_exec(
+        "bcftools", "view", vcf_path, "-o", "/dev/null",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode == 0:
+        return {"ok": True, "message": "OK"}
+    return {"ok": False, "message": stderr.decode().strip()}
 
 
 def parse_vcf_header(vcf_path: str) -> dict:

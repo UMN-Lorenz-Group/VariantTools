@@ -8,9 +8,11 @@ import {
   Loader2,
   Download,
   Search,
+  Link2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import FileUpload from '@/components/FileUpload';
+import { usePipeline } from '@/context/PipelineContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +42,7 @@ interface StatusResponse {
   error_message: string | null;
   before: FixrefStats | null;
   after: FixrefStats | null;
+  output_file: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,10 +127,14 @@ function StatsCard({ title, stats }: { title: string; stats: FixrefStats }) {
 // ---------------------------------------------------------------------------
 
 export default function FixRefPage() {
+  const { pipelineVcf, setPipelineVcf } = usePipeline();
+
   // VCF file
   const [vcfFileId, setVcfFileId] = useState<string | null>(null);
   const [vcfFileName, setVcfFileName] = useState<string | null>(null);
   const [uploadingVcf, setUploadingVcf] = useState(false);
+  const [usingPipeline, setUsingPipeline] = useState(false);
+  const [fixOutputFile, setFixOutputFile] = useState<string | null>(null);
 
   // Reference selection
   const [refMode, setRefMode] = useState<'path' | 'upload'>('path');
@@ -177,6 +184,7 @@ export default function FixRefPage() {
           if (data.before && data.after) {
             setFixResult({ before: data.before, after: data.after });
           }
+          if (data.output_file) setFixOutputFile(data.output_file);
         } else if (data.status === 'failed') {
           stopPolling();
           setError(data.error_message ?? 'Job failed with unknown error.');
@@ -381,25 +389,56 @@ export default function FixRefPage() {
       {/* 1. VCF Upload */}
       <div className="card space-y-4">
         <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
-          1. Upload VCF File
+          1. VCF File
         </h2>
-        <FileUpload
-          accept=".vcf,.vcf.gz"
-          multiple={false}
-          onFiles={handleVcfSelected}
-          label="Drop VCF file here or click to browse"
-          description="Supports .vcf and .vcf.gz"
-        />
-        {uploadingVcf && (
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <Loader2 size={14} className="animate-spin" />
-            Uploading…
+
+        {/* Pipeline auto-fill */}
+        {pipelineVcf && !isDone && (
+          <div className="flex items-center gap-3 bg-blue-950/30 border border-blue-800/50 rounded-lg px-4 py-3">
+            <Link2 size={14} className="text-blue-400 flex-shrink-0" />
+            <span className="text-xs text-blue-300 flex-1">
+              Pipeline VCF: <span className="font-mono text-blue-200">{pipelineVcf.filename}</span>
+            </span>
+            <button
+              onClick={() => {
+                setUsingPipeline(true);
+                setVcfFileId(pipelineVcf.file_id);
+                setVcfFileName(pipelineVcf.filename);
+                const base = pipelineVcf.filename.replace(/\.(vcf\.gz|vcf|bcf)$/, '');
+                setOutputFilename(`${base}_fixed.vcf`);
+              }}
+              className={`text-xs px-3 py-1 rounded border transition-colors ${
+                usingPipeline
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'border-blue-700 text-blue-400 hover:bg-blue-900/40'
+              }`}
+            >
+              {usingPipeline ? '✓ Using pipeline VCF' : 'Use pipeline VCF'}
+            </button>
           </div>
+        )}
+
+        {!usingPipeline && (
+          <>
+            <FileUpload
+              accept=".vcf,.vcf.gz"
+              multiple={false}
+              onFiles={handleVcfSelected}
+              label="Drop VCF file here or click to browse"
+              description="Supports .vcf and .vcf.gz"
+            />
+            {uploadingVcf && (
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <Loader2 size={14} className="animate-spin" />
+                Uploading…
+              </div>
+            )}
+          </>
         )}
         {vcfFileName && !uploadingVcf && (
           <div className="flex items-center gap-2 text-sm text-green-400">
             <CheckCircle size={14} />
-            Uploaded: <span className="font-medium">{vcfFileName}</span>
+            Ready: <span className="font-medium">{vcfFileName}</span>
           </div>
         )}
       </div>
@@ -657,7 +696,7 @@ export default function FixRefPage() {
             </table>
           </div>
 
-          {/* Download */}
+          {/* Download + pipeline */}
           <div className="flex items-center justify-between gap-4 flex-wrap bg-gray-800/50 rounded-xl px-5 py-4">
             <div>
               <p className="text-sm font-medium text-gray-200">Download Fixed VCF</p>
@@ -665,13 +704,32 @@ export default function FixRefPage() {
                 Output: <code className="text-blue-300">{outputFilename}</code>
               </p>
             </div>
-            <button
-              onClick={() => jobId && window.open(`${API_BASE}/api/fixref/download/${jobId}`, '_blank')}
-              className="btn-primary"
-            >
-              <Download size={15} />
-              Download Fixed VCF
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => jobId && window.open(`${API_BASE}/api/fixref/download/${jobId}`, '_blank')}
+                className="btn-primary"
+              >
+                <Download size={15} />
+                Download Fixed VCF
+              </button>
+              {fixOutputFile && (
+                <button
+                  onClick={() =>
+                    setPipelineVcf({
+                      file_id: fixOutputFile,
+                      filename: outputFilename,
+                      sample_count: pipelineVcf?.sample_count,
+                      source: 'fixref',
+                    })
+                  }
+                  className="btn-primary"
+                  style={{ backgroundColor: '#2563eb' }}
+                >
+                  <Link2 size={15} />
+                  Use in pipeline →
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
